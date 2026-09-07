@@ -2,28 +2,16 @@ import os
 import asyncio
 import subprocess
 import streamlit as st
-import google.generativeai as genai
+from google import genai
 import edge_tts
 
 st.set_page_config(page_title="AI Movie Recap Automator", layout="wide")
 
-st.markdown("""
-<style>
-    .stApp { background-color: #0d0f12; color: #e0e6ed; }
-    h1, h2, h3 { color: #00f2fe !important; }
-    .stButton>button {
-        background: linear-gradient(45deg, #00f2fe, #4facfe);
-        color: #000000 !important; font-weight: bold; border: none; border-radius: 8px; padding: 12px 24px;
-    }
-    .stProgress > div > div > div > div { background-color: #00f2fe; }
-</style>
-""", unsafe_allow_html=True)
-
 st.title("⚡ Auto Movie Recap Engine")
 st.write("Upload video to automatically generate Burmese dub/voiceover recap.")
 
-# Secrets ထဲက Key ကို တိုက်ရိုက်ဖတ်ယူခြင်း
-GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "")
+# Secrets ထဲမှ Key အမှန်ကို ယူခြင်း
+GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "").strip().strip('"').strip("'")
 
 async def generate_tts(text, output_file):
     communicate = edge_tts.Communicate(text, "my-MM-ThihaNeural")
@@ -33,7 +21,7 @@ uploaded_file = st.file_uploader("🎬 Upload Video File (MP4, MKV, MOV)", type=
 
 if uploaded_file and st.button("🚀 Start Processing"):
     if not GEMINI_API_KEY:
-        st.error("🔑 Streamlit Secrets ထဲတွင် GEMINI_API_KEY မရှိသေးပါ။ Manage App > Secrets တွင် ထည့်သွင်းပေးပါ။")
+        st.error("🔑 Streamlit Secrets ထဲတွင် GEMINI_API_KEY မရှိသေးပါ။")
         st.stop()
         
     progress_bar = st.progress(0)
@@ -55,24 +43,27 @@ if uploaded_file and st.button("🚀 Start Processing"):
         progress_bar.progress(25)
         subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-q:a", "0", "-map", "a", extracted_audio_path], check=True)
 
-        # Step 2: Gemini Translation
+        # Step 2: Gemini Translation (New SDK format)
         status_text.markdown("**[Step 2/4]** 🧠 Gemini AI မှ မြန်မာလို ဘာသာပြန်နေပါသည်။")
         progress_bar.progress(50)
         
-        genai.configure(api_key=GEMINI_API_KEY)
-        audio_file = genai.upload_file(path=extracted_audio_path)
+        client = genai.Client(api_key=GEMINI_API_KEY)
         
-        model = genai.GenerativeModel("gemini-1.5-flash")
+        uploaded_audio = client.files.upload(file=extracted_audio_path)
+        
         prompt = "Listen to the dialogue and summarize/translate into natural Burmese movie recap script."
-        response = model.generate_content([audio_file, prompt])
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=[uploaded_audio, prompt]
+        )
         burmese_script = response.text
 
-        # Step 3: Voiceover (Edge-TTS)
+        # Step 3: Voiceover
         status_text.markdown("**[Step 3/4]** 🎙️ Voiceover အသံ ထုတ်လုပ်နေပါသည်။")
         progress_bar.progress(75)
         asyncio.run(generate_tts(burmese_script, final_audio_path))
 
-        # Step 4: Merge Audio & Video
+        # Step 4: Merge
         status_text.markdown("**[Step 4/4]** 🎬 အသံနှင့် ဗီဒီယို ပေါင်းစပ်နေပါသည်။")
         progress_bar.progress(90)
         ffmpeg_cmd = [
