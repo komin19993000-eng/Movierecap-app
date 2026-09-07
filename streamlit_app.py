@@ -1,142 +1,115 @@
+# streamlit_app.py
+# AI Movie Recap / Burmese Dubbing App
+# Streamlit Cloud compatible
+
 import os
 import re
 import json
 import time
-import shutil
 import asyncio
+import tempfile
 import subprocess
 from pathlib import Path
 
 import streamlit as st
 from google import genai
-from google.genai import types
 import edge_tts
 
 
 # ============================================================
-# CONFIG
+# PAGE
 # ============================================================
 
 st.set_page_config(
-    page_title="Myanmar AI Dubbing Studio",
+    page_title="AI Movie Recap",
     page_icon="🎬",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="expanded",
 )
 
-APP_TITLE = "🎬 Myanmar AI Dubbing Studio"
+st.markdown(
+    """
+    <style>
+    .main-title {
+        font-size: 34px;
+        font-weight: 800;
+        margin-bottom: 4px;
+    }
 
-GEMINI_MODEL = "gemini-3.7-flash"
+    .sub-title {
+        color: #888;
+        margin-bottom: 25px;
+    }
 
-VOICE_THIHA = "my-MM-ThihaNeural"
-VOICE_NILAR = "my-MM-NilarNeural"
+    .stage {
+        padding: 12px 16px;
+        border-radius: 12px;
+        margin: 6px 0;
+        border: 1px solid rgba(128,128,128,.2);
+    }
 
-MAX_TRANSLATION_BATCH = 12
+    .success-box {
+        padding: 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(0,200,100,.3);
+        background: rgba(0,200,100,.07);
+    }
 
-WORK_ROOT = Path("temp_workspace")
+    .error-box {
+        padding: 16px;
+        border-radius: 14px;
+        border: 1px solid rgba(255,0,0,.3);
+        background: rgba(255,0,0,.07);
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    '<div class="main-title">🎬 AI Movie Recap Automator</div>',
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    '<div class="sub-title">Natural Burmese dubbing • Smart dialogue timing • AI translation</div>',
+    unsafe_allow_html=True,
+)
 
 
 # ============================================================
-# UI
+# CONSTANTS
 # ============================================================
 
-st.markdown("""
-<style>
-
-.stApp {
-    background:
-        radial-gradient(circle at 10% 10%, rgba(0,242,254,0.08), transparent 30%),
-        radial-gradient(circle at 90% 90%, rgba(79,172,254,0.08), transparent 30%),
-        #0b0e12;
-    color: #e8edf3;
+VOICE_MAP = {
+    "အမျိုးသား (သီဟ)": "my-MM-ThihaNeural",
+    "အမျိုးသမီး (နီလာ)": "my-MM-NilarNeural",
 }
 
-.block-container {
-    max-width: 1200px;
-    padding-top: 2rem;
-    padding-bottom: 4rem;
-}
-
-.hero {
-    padding: 25px;
-    border-radius: 20px;
-    background: linear-gradient(
-        135deg,
-        rgba(0,242,254,0.12),
-        rgba(79,172,254,0.05)
-    );
-    border: 1px solid rgba(0,242,254,0.18);
-    margin-bottom: 25px;
-}
-
-.hero h1 {
-    margin: 0;
-    font-size: 38px;
-}
-
-.hero p {
-    color: #9ca8b5;
-    margin-top: 8px;
-}
-
-.stage-card {
-    padding: 12px 16px;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.035);
-    border: 1px solid rgba(255,255,255,0.07);
-    margin-bottom: 8px;
-}
-
-.success-box {
-    padding: 18px;
-    border-radius: 14px;
-    background: rgba(0, 255, 170, 0.08);
-    border: 1px solid rgba(0, 255, 170, 0.25);
-}
-
-.stButton > button {
-    width: 100%;
-    min-height: 48px;
-    border-radius: 12px;
-    border: none;
-    font-weight: 800;
-    font-size: 16px;
-    background: linear-gradient(90deg, #00f2fe, #4facfe);
-    color: #061018;
-}
-
-div[data-testid="stFileUploader"] {
-    border-radius: 14px;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-
-st.markdown("""
-<div class="hero">
-    <h1>🎬 Myanmar AI Dubbing Studio</h1>
-    <p>
-        AI Transcript → Natural Burmese → Myanmar Voiceover →
-        Dialogue Sync → Final Video
-    </p>
-</div>
-""", unsafe_allow_html=True)
+# Current stable model first, older stable fallbacks after it.
+MODEL_CANDIDATES = [
+    "gemini-3.8-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+]
 
 
 # ============================================================
 # SESSION STATE
 # ============================================================
 
-DEFAULT_STATE = {
-    "completed": False,
-    "video_bytes": None,
-    "script": "",
-    "segments": [],
-    "last_error": "",
+DEFAULTS = {
     "processing": False,
+    "result_bytes": None,
+    "result_name": None,
+    "script": [],
+    "logs": [],
+    "selected_model": None,
 }
 
-for key, value in DEFAULT_STATE.items():
+for key, value in DEFAULTS.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
@@ -145,810 +118,740 @@ for key, value in DEFAULT_STATE.items():
 # HELPERS
 # ============================================================
 
-def run_cmd(cmd, timeout=None, quiet=False):
-    """
-    Run subprocess safely.
-    """
-    try:
-        result = subprocess.run(
-            cmd,
-            capture_output=True,
-            text=True,
-            timeout=timeout
+def run_cmd(command, timeout=3600):
+    """Run command safely and return stdout."""
+    result = subprocess.run(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        timeout=timeout,
+    )
+
+    if result.returncode != 0:
+        raise RuntimeError(
+            result.stderr[-5000:] if result.stderr else "FFmpeg command failed."
         )
 
-        if result.returncode != 0:
-            error = result.stderr[-4000:] if result.stderr else "Unknown FFmpeg error."
-            raise RuntimeError(error)
-
-        return result
-
-    except subprocess.TimeoutExpired:
-        raise RuntimeError("Process timeout ဖြစ်သွားပါတယ်။")
+    return result.stdout
 
 
-def check_binary(name):
-    return shutil.which(name) is not None
+def ffmpeg_exists():
+    try:
+        result = subprocess.run(
+            ["ffmpeg", "-version"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=20,
+        )
+        return result.returncode == 0
+    except Exception:
+        return False
 
 
 def get_duration(path):
-    """
-    Get media duration with ffprobe.
-    """
+    output = run_cmd(
+        [
+            "ffprobe",
+            "-v",
+            "error",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "default=noprint_wrappers=1:nokey=1",
+            str(path),
+        ],
+        timeout=60,
+    )
+
+    return float(output.strip())
+
+
+def safe_float(value, default=0.0):
     try:
-        result = run_cmd(
-            [
-                "ffprobe",
-                "-v", "error",
-                "-show_entries", "format=duration",
-                "-of", "default=noprint_wrappers=1:nokey=1",
-                str(path)
-            ],
-            timeout=30
-        )
-
-        value = result.stdout.strip()
-
-        if not value:
-            return 0.0
-
         return float(value)
-
     except Exception:
-        return 0.0
+        return default
 
 
 def clean_json_text(text):
-    """
-    Gemini sometimes returns ```json ... ```
-    Remove markdown fences.
-    """
+    """Extract JSON from Gemini response."""
+    if not text:
+        return ""
+
     text = text.strip()
 
-    if text.startswith("```"):
-        text = re.sub(r"^```(?:json)?", "", text.strip(), flags=re.I)
-        text = re.sub(r"```$", "", text.strip())
+    text = re.sub(
+        r"^```(?:json)?\s*",
+        "",
+        text,
+        flags=re.IGNORECASE,
+    )
 
-    return text.strip()
+    text = re.sub(
+        r"\s*```$",
+        "",
+        text,
+    )
+
+    start = text.find("[")
+    end = text.rfind("]")
+
+    if start >= 0 and end > start:
+        return text[start:end + 1]
+
+    start = text.find("{")
+    end = text.rfind("}")
+
+    if start >= 0 and end > start:
+        return text[start:end + 1]
+
+    return text
 
 
-def safe_json_loads(text):
-    text = clean_json_text(text)
+def parse_segments(text):
+    raw = clean_json_text(text)
+
+    data = json.loads(raw)
+
+    if isinstance(data, dict):
+        if "segments" in data:
+            data = data["segments"]
+        else:
+            data = [data]
+
+    if not isinstance(data, list):
+        raise ValueError("Gemini did not return a valid segment list.")
+
+    result = []
+
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+
+        start = safe_float(
+            item.get("start", item.get("start_time", 0))
+        )
+
+        end = safe_float(
+            item.get("end", item.get("end_time", 0))
+        )
+
+        text_value = str(
+            item.get(
+                "text",
+                item.get(
+                    "burmese",
+                    item.get("translation", ""),
+                ),
+            )
+        ).strip()
+
+        if end <= start:
+            continue
+
+        if not text_value:
+            continue
+
+        result.append(
+            {
+                "start": max(0.0, start),
+                "end": max(0.0, end),
+                "text": text_value,
+            }
+        )
+
+    result.sort(key=lambda x: x["start"])
+
+    cleaned = []
+
+    last_end = -1
+
+    for item in result:
+        if item["start"] < last_end:
+            item["start"] = last_end
+
+        if item["end"] <= item["start"]:
+            continue
+
+        cleaned.append(item)
+        last_end = item["end"]
+
+    if not cleaned:
+        raise ValueError("No usable dialogue segments were returned.")
+
+    return cleaned
+
+
+def get_available_models(client):
+    """Return models that are actually visible to this API key."""
+    available = []
 
     try:
-        return json.loads(text)
+        for model in client.models.list():
+            name = getattr(model, "name", "") or ""
 
-    except json.JSONDecodeError:
-        # Try extracting first JSON array.
-        start = text.find("[")
-        end = text.rfind("]")
+            if name.startswith("models/"):
+                name = name[7:]
 
-        if start >= 0 and end > start:
-            return json.loads(text[start:end + 1])
+            available.append(name)
 
-        raise
+    except Exception:
+        return []
 
-
-def format_time(seconds):
-    seconds = max(0, int(seconds))
-
-    h = seconds // 3600
-    m = (seconds % 3600) // 60
-    s = seconds % 60
-
-    if h:
-        return f"{h:02d}:{m:02d}:{s:02d}"
-
-    return f"{m:02d}:{s:02d}"
+    return available
 
 
-def set_status(stage, message, progress, started_at):
-    elapsed = time.time() - started_at
+def choose_model(client):
+    available = get_available_models(client)
 
-    st.session_state.status_box.markdown(
-        f"""
-        <div class="stage-card">
-            <b>{stage}</b><br>
-            {message}
-            <br>
-            <small>
-                Progress: {progress:.0f}% |
-                Elapsed: {format_time(elapsed)}
-            </small>
-        </div>
-        """,
-        unsafe_allow_html=True
+    if available:
+        for candidate in MODEL_CANDIDATES:
+            if candidate in available:
+                return candidate
+
+    # If model listing is unavailable, try known stable models.
+    return MODEL_CANDIDATES
+
+
+def gemini_generate(client, contents, config=None):
+    models = choose_model(client)
+
+    if isinstance(models, str):
+        models = [models]
+
+    errors = []
+
+    for model in models:
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=contents,
+                config=config,
+            )
+
+            text = getattr(response, "text", None)
+
+            if text:
+                st.session_state.selected_model = model
+                return text
+
+        except Exception as exc:
+            errors.append(f"{model}: {exc}")
+
+    raise RuntimeError(
+        "Gemini AI failed.\n\n" + "\n".join(errors[-5:])
     )
 
-    st.session_state.progress_bar.progress(
-        min(max(progress / 100.0, 0.0), 1.0)
+
+def extract_audio(video_path, audio_path):
+    run_cmd(
+        [
+            "ffmpeg",
+            "-y",
+            "-i",
+            str(video_path),
+            "-vn",
+            "-ac",
+            "1",
+            "-ar",
+            "16000",
+            "-c:a",
+            "pcm_s16le",
+            str(audio_path),
+        ],
+        timeout=3600,
     )
+
+
+def upload_to_gemini(client, audio_path):
+    uploaded = client.files.upload(
+        file=str(audio_path)
+    )
+
+    return uploaded
+
+
+def wait_for_file(client, uploaded):
+    name = getattr(uploaded, "name", None)
+
+    if not name:
+        return uploaded
+
+    for _ in range(60):
+        try:
+            current = client.files.get(name=name)
+
+            state = getattr(current, "state", None)
+
+            state_name = str(
+                getattr(state, "name", state)
+            ).upper()
+
+            if "PROCESSING" not in state_name:
+                return current
+
+        except Exception:
+            pass
+
+        time.sleep(2)
+
+    return uploaded
+
+
+# ============================================================
+# GEMINI TRANSCRIPTION + TRANSLATION
+# ============================================================
+
+def transcribe_and_translate(client, audio_file):
+    prompt = r"""
+You are a professional Burmese movie recap narrator.
+
+Listen to the entire uploaded movie audio carefully.
+
+Your task:
+
+1. Detect every meaningful spoken dialogue.
+2. Ignore music, sound effects, silence and background noise.
+3. Identify the exact start and end time of each spoken dialogue.
+4. Translate the dialogue into natural spoken Burmese.
+5. Do NOT translate word-for-word.
+6. Make the Burmese sound like a professional Myanmar movie recap narrator.
+7. Preserve the original meaning, emotion, intention and context.
+8. Keep each sentence short enough to be spoken naturally.
+9. Do not invent dialogue.
+10. Do not skip important dialogue.
+11. Keep chronological order.
+12. Use Burmese script.
+
+Return ONLY valid JSON.
+
+Format:
+
+[
+  {
+    "start": 0.00,
+    "end": 3.50,
+    "text": "မြန်မာဘာသာဖြင့် သဘာဝကျကျ ပြန်ဆိုထားသော စကား"
+  }
+]
+
+Important:
+- start and end must be seconds.
+- Do not use "s".
+- Do not use markdown.
+- Do not include explanations.
+"""
+
+    uploaded = wait_for_file(client, audio_file)
+
+    response_text = gemini_generate(
+        client,
+        [
+            uploaded,
+            prompt,
+        ],
+    )
+
+    return parse_segments(response_text)
 
 
 # ============================================================
 # TTS
 # ============================================================
 
-async def generate_tts_async(text, output_path, voice):
-    communicate = edge_tts.Communicate(
+async def create_tts_async(text, voice, output_path):
+    communicator = edge_tts.Communicate(
         text=text,
-        voice=voice
+        voice=voice,
+        rate="+0%",
+        volume="+0%",
+        pitch="+0Hz",
     )
 
-    await communicate.save(str(output_path))
+    await communicator.save(str(output_path))
 
 
-def generate_tts(text, output_path, voice):
+def create_tts(text, voice, output_path):
     asyncio.run(
-        generate_tts_async(
+        create_tts_async(
             text,
+            voice,
             output_path,
-            voice
         )
     )
 
 
 # ============================================================
-# ATEMPO FILTER
+# AUDIO SPEED
 # ============================================================
 
-def build_atempo_chain(speed):
+def atempo_filter(speed):
     """
-    FFmpeg atempo accepts 0.5 - 2.0 per filter.
-    Build a safe chain for arbitrary speed.
+    FFmpeg atempo supports 0.5 - 2.0.
+    Build a chain when needed.
     """
 
-    speed = max(0.25, min(float(speed), 4.0))
+    speed = max(0.25, min(4.0, speed))
 
-    filters = []
+    parts = []
 
     while speed < 0.5:
-        filters.append("atempo=0.5")
+        parts.append("atempo=0.5")
         speed /= 0.5
 
     while speed > 2.0:
-        filters.append("atempo=2.0")
+        parts.append("atempo=2.0")
         speed /= 2.0
 
-    filters.append(f"atempo={speed:.6f}")
+    parts.append(f"atempo={speed:.6f}")
 
-    return ",".join(filters)
+    return ",".join(parts)
 
 
-# ============================================================
-# FIT AUDIO TO EXACT DURATION
-# ============================================================
-
-def fit_audio_to_duration(input_audio, output_audio, target_duration):
+def fit_audio_to_slot(input_audio, output_audio, target_duration):
     """
-    Adjust TTS audio to target dialogue duration.
-
-    Important:
-    We DO NOT change video speed.
-
-    The original video timeline remains the master timeline.
+    Fit TTS into the dialogue slot without changing video duration.
     """
 
     source_duration = get_duration(input_audio)
 
     if source_duration <= 0:
-        raise RuntimeError("TTS audio duration မရပါ။")
+        raise RuntimeError("Invalid TTS duration.")
 
-    target_duration = max(float(target_duration), 0.10)
+    target_duration = max(0.05, target_duration)
 
     speed = source_duration / target_duration
 
-    # Keep voice reasonably natural.
-    # If extremely different, cap speed and trim/pad afterward.
-    speed = max(0.65, min(speed, 1.75))
+    # Don't create extreme speech.
+    # If it would be too fast, cap the speed and let the voice
+    # slightly overlap only within the dialogue boundary.
+    speed = max(0.55, min(2.0, speed))
 
-    atempo = build_atempo_chain(speed)
-
-    cmd = [
-        "ffmpeg",
-        "-y",
-        "-i", str(input_audio),
-
-        "-filter:a",
-        f"{atempo},"
-        f"apad,"
-        f"atrim=duration={target_duration:.3f}",
-
-        "-ar", "24000",
-        "-ac", "1",
-        "-c:a", "aac",
-        "-b:a", "128k",
-
-        str(output_audio)
-    ]
-
-    run_cmd(cmd, timeout=120)
-
-    return get_duration(output_audio)
-
-
-# ============================================================
-# CREATE SILENCE
-# ============================================================
-
-def create_silence(path, duration):
-    duration = max(0.0, float(duration))
-
-    if duration <= 0.01:
-        return
+    filter_value = atempo_filter(speed)
 
     run_cmd(
         [
             "ffmpeg",
             "-y",
-            "-f", "lavfi",
-            "-i", "anullsrc=r=24000:cl=mono",
-            "-t", f"{duration:.3f}",
-            "-c:a", "aac",
-            "-b:a", "128k",
-            str(path)
+            "-i",
+            str(input_audio),
+            "-filter:a",
+            filter_value,
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            str(output_audio),
         ],
-        timeout=60
+        timeout=300,
     )
 
 
 # ============================================================
-# TRANSCRIPT
-# ============================================================
-
-def generate_transcript(client, audio_path):
-    uploaded = client.files.upload(
-        file=str(audio_path)
-    )
-
-    prompt = """
-You are a professional movie transcription engine.
-
-Listen carefully to the uploaded movie audio.
-
-Create a timestamped transcript.
-
-Rules:
-1. Detect every meaningful spoken dialogue.
-2. Do NOT summarize.
-3. Do NOT translate.
-4. Preserve the actual spoken meaning.
-5. Split dialogue naturally.
-6. Each segment must have:
-   - start: number of seconds
-   - end: number of seconds
-   - text: original spoken dialogue
-7. Ignore music and normal background noise.
-8. Do not invent dialogue.
-9. Keep chronological order.
-10. Use decimal seconds.
-
-Return ONLY a JSON array:
-
-[
-  {
-    "start": 0.0,
-    "end": 2.5,
-    "text": "..."
-  }
-]
-"""
-
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=[uploaded, prompt],
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json"
-        )
-    )
-
-    data = safe_json_loads(response.text)
-
-    if not isinstance(data, list):
-        raise RuntimeError("Transcript JSON format မမှန်ပါ။")
-
-    cleaned = []
-
-    for item in data:
-        try:
-            start = float(item.get("start", 0))
-            end = float(item.get("end", 0))
-            text = str(item.get("text", "")).strip()
-
-            if not text:
-                continue
-
-            if end <= start:
-                continue
-
-            cleaned.append({
-                "start": start,
-                "end": end,
-                "original": text,
-                "text": ""
-            })
-
-        except Exception:
-            continue
-
-    if not cleaned:
-        raise RuntimeError("Dialogue transcript မရပါ။")
-
-    return cleaned
-
-
-# ============================================================
-# BURMESE TRANSLATION
-# ============================================================
-
-def translate_batch(client, batch):
-    payload = []
-
-    for i, seg in enumerate(batch):
-        payload.append({
-            "id": i,
-            "text": seg["original"]
-        })
-
-    prompt = f"""
-You are a professional Burmese movie-recap script writer.
-
-Translate/adapt the following movie dialogue into NATURAL SPOKEN BURMESE.
-
-Goal:
-- Sounds like a Burmese movie recap narrator.
-- Natural spoken Burmese.
-- Easy to listen to.
-- Preserve the meaning.
-- Do not translate word-for-word when that sounds unnatural.
-- Keep character names consistent.
-- Do not add information that isn't present.
-- Do not remove important meaning.
-- Keep each dialogue as one corresponding item.
-
-IMPORTANT:
-Return ONLY JSON.
-
-Input:
-{json.dumps(payload, ensure_ascii=False)}
-
-Output format:
-[
-  {{
-    "id": 0,
-    "text": "သဘာဝကျတဲ့ မြန်မာစကား"
-  }}
-]
-"""
-
-    response = client.models.generate_content(
-        model=GEMINI_MODEL,
-        contents=prompt,
-        config=types.GenerateContentConfig(
-            response_mime_type="application/json"
-        )
-    )
-
-    result = safe_json_loads(response.text)
-
-    if not isinstance(result, list):
-        raise RuntimeError("Translation JSON format မမှန်ပါ။")
-
-    mapped = {}
-
-    for item in result:
-        try:
-            idx = int(item.get("id"))
-            text = str(item.get("text", "")).strip()
-
-            if text:
-                mapped[idx] = text
-
-        except Exception:
-            continue
-
-    output = []
-
-    for i, seg in enumerate(batch):
-        new_seg = dict(seg)
-        new_seg["text"] = mapped.get(i, seg["original"])
-        output.append(new_seg)
-
-    return output
-
-
-def translate_all(client, segments):
-    translated = []
-
-    for i in range(0, len(segments), MAX_TRANSLATION_BATCH):
-        batch = segments[i:i + MAX_TRANSLATION_BATCH]
-
-        translated.extend(
-            translate_batch(
-                client,
-                batch
-            )
-        )
-
-    return translated
-
-
-# ============================================================
-# BUILD DUBBED AUDIO TIMELINE
+# CREATE FULL DUBBED AUDIO
 # ============================================================
 
 def build_dubbed_audio(
     segments,
-    tts_dir,
-    output_audio,
-    video_duration,
     voice,
-    progress_callback=None
+    total_duration,
+    work_dir,
+    progress_callback=None,
 ):
     """
-    Create one full-length dubbed audio timeline.
+    Create one continuous Burmese audio track.
 
-    Video timeline is NOT changed.
+    Every dialogue is positioned at its original timestamp.
+    The video itself is NOT sped up or slowed down.
     """
 
-    tts_dir.mkdir(parents=True, exist_ok=True)
-
-    audio_parts = []
-
-    cursor = 0.0
+    audio_files = []
 
     total = len(segments)
 
-    for index, seg in enumerate(segments):
-        start = max(0.0, float(seg["start"]))
-        end = min(video_duration, float(seg["end"]))
+    for index, segment in enumerate(segments):
+        text = segment["text"]
+        start = segment["start"]
+        end = segment["end"]
 
-        if end <= start:
+        slot = end - start
+
+        if slot <= 0:
             continue
 
-        target_duration = end - start
+        raw_tts = work_dir / f"tts_{index:05d}.mp3"
+        fitted = work_dir / f"fit_{index:05d}.m4a"
 
-        # Silence before dialogue
-        gap = start - cursor
-
-        if gap > 0.03:
-            silence_file = tts_dir / f"silence_{index:05d}.m4a"
-
-            create_silence(
-                silence_file,
-                gap
-            )
-
-            audio_parts.append(silence_file)
-
-        raw_tts = tts_dir / f"raw_{index:05d}.mp3"
-        fitted_tts = tts_dir / f"fit_{index:05d}.m4a"
-
-        generate_tts(
-            seg["text"],
+        create_tts(
+            text,
+            voice,
             raw_tts,
-            voice
         )
 
-        fit_audio_to_duration(
+        fit_audio_to_slot(
             raw_tts,
-            fitted_tts,
-            target_duration
+            fitted,
+            slot,
         )
 
-        audio_parts.append(fitted_tts)
-
-        cursor = end
+        audio_files.append(
+            {
+                "path": fitted,
+                "start": start,
+                "end": end,
+            }
+        )
 
         if progress_callback:
             progress_callback(
-                index + 1,
-                total
+                0.55 + (0.25 * ((index + 1) / max(1, total))),
+                f"အသံဖန်တီးနေသည်... {index + 1}/{total}",
             )
 
-    # Fill remaining video duration
-    remaining = video_duration - cursor
+    if not audio_files:
+        raise RuntimeError("No Burmese voice was generated.")
 
-    if remaining > 0.03:
-        final_silence = tts_dir / "final_silence.m4a"
+    # --------------------------------------------------------
+    # Create silence base
+    # --------------------------------------------------------
 
-        create_silence(
-            final_silence,
-            remaining
-        )
-
-        audio_parts.append(final_silence)
-
-    if not audio_parts:
-        raise RuntimeError("Dubbed audio parts မထွက်ပါ။")
-
-    concat_file = tts_dir / "audio_concat.txt"
-
-    with open(concat_file, "w", encoding="utf-8") as f:
-        for item in audio_parts:
-            path = str(item.resolve()).replace("'", "'\\''")
-            f.write(f"file '{path}'\n")
+    silence_base = work_dir / "silence.m4a"
 
     run_cmd(
         [
             "ffmpeg",
             "-y",
-            "-f", "concat",
-            "-safe", "0",
-            "-i", str(concat_file),
-            "-c:a", "aac",
-            "-b:a", "128k",
-            "-ar", "24000",
-            "-ac", "1",
-            "-t", f"{video_duration:.3f}",
-            str(output_audio)
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=48000:cl=stereo",
+            "-t",
+            f"{total_duration:.3f}",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            str(silence_base),
         ],
-        timeout=600
+        timeout=300,
     )
+
+    # --------------------------------------------------------
+    # Mix every dialogue at absolute timestamp
+    # --------------------------------------------------------
+
+    inputs = [
+        "-i",
+        str(silence_base),
+    ]
+
+    for item in audio_files:
+        inputs.extend(
+            [
+                "-i",
+                str(item["path"]),
+            ]
+        )
+
+    filters = []
+
+    # Base silence
+    filters.append(
+        "[0:a]aresample=48000,asetpts=PTS-STARTPTS[base]"
+    )
+
+    mix_inputs = ["[base]"]
+
+    for index, item in enumerate(audio_files, start=1):
+        delay_ms = int(round(item["start"] * 1000))
+
+        filters.append(
+            f"[{index}:a]"
+            f"aresample=48000,"
+            f"asetpts=PTS-STARTPTS,"
+            f"adelay={delay_ms}|{delay_ms}"
+            f"[a{index}]"
+        )
+
+        mix_inputs.append(f"[a{index}]")
+
+    filters.append(
+        "".join(mix_inputs)
+        + f"amix=inputs={len(mix_inputs)}:"
+          f"duration=first:"
+          f"dropout_transition=0:"
+          f"normalize=0,"
+          f"atrim=0:{total_duration:.3f},"
+          f"asetpts=PTS-STARTPTS,"
+          f"loudnorm=I=-16:TP=-1.5:LRA=11,"
+          f"aformat=sample_rates=48000:channel_layouts=stereo"
+          f"[out]"
+    )
+
+    output_audio = work_dir / "burmese_full.m4a"
+
+    command = [
+        "ffmpeg",
+        "-y",
+        *inputs,
+        "-filter_complex",
+        ";".join(filters),
+        "-map",
+        "[out]",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        str(output_audio),
+    ]
+
+    run_cmd(
+        command,
+        timeout=3600,
+    )
+
+    return output_audio
 
 
 # ============================================================
 # FINAL VIDEO
 # ============================================================
 
-def create_final_video(input_video, dubbed_audio, output_video):
+def merge_video_audio(video_path, audio_path, output_path):
     """
-    Keep original video stream.
+    Keep original video exactly as it is.
     Remove original audio.
-    Add Burmese dubbed audio.
+    Add Burmese audio.
     """
 
     run_cmd(
         [
             "ffmpeg",
             "-y",
-
-            "-i", str(input_video),
-            "-i", str(dubbed_audio),
-
-            "-map", "0:v:0",
-            "-map", "1:a:0",
-
-            "-c:v", "copy",
-
-            "-c:a", "aac",
-            "-b:a", "128k",
-
+            "-i",
+            str(video_path),
+            "-i",
+            str(audio_path),
+            "-map",
+            "0:v:0",
+            "-map",
+            "1:a:0",
+            "-c:v",
+            "copy",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
             "-shortest",
-
-            "-movflags", "+faststart",
-
-            str(output_video)
+            "-movflags",
+            "+faststart",
+            str(output_path),
         ],
-        timeout=1200
+        timeout=3600,
     )
 
 
 # ============================================================
-# VALIDATION
+# PROGRESS UI
 # ============================================================
 
-def validate_environment():
-    missing = []
+def make_progress():
+    progress = st.progress(0)
+    status = st.empty()
+    eta = st.empty()
 
-    if not check_binary("ffmpeg"):
-        missing.append("ffmpeg")
+    started = time.time()
 
-    if not check_binary("ffprobe"):
-        missing.append("ffprobe")
+    def update(value, message):
+        value = max(0.0, min(1.0, value))
 
-    if missing:
-        raise RuntimeError(
-            "FFmpeg မတွေ့ပါ။ packages.txt ထဲမှာ ffmpeg ထည့်ထားတာ သေချာပါစေ။"
+        progress.progress(
+            int(value * 100)
         )
 
+        elapsed = time.time() - started
+
+        if value > 0.01:
+            remaining = elapsed * (1.0 - value) / value
+
+            if remaining < 60:
+                eta_text = f"{remaining:.0f} sec"
+            else:
+                eta_text = f"{remaining / 60:.1f} min"
+
+            eta.markdown(
+                f"**Progress:** {value * 100:.0f}%  •  "
+                f"**ETA:** {eta_text}"
+            )
+        else:
+            eta.markdown("**Progress:** 0%")
+
+        status.markdown(
+            f"**{message}**"
+        )
+
+    return update
+
 
 # ============================================================
-# UI CONTROLS
+# SIDEBAR
 # ============================================================
 
-col1, col2 = st.columns([2, 1])
+with st.sidebar:
+    st.markdown("## ⚙️ Settings")
 
-with col1:
-    uploaded_file = st.file_uploader(
-        "🎬 Video Upload",
-        type=["mp4", "mkv", "mov", "webm"],
-        help="Movie/video file ကိုရွေးပါ။"
+    voice_name = st.selectbox(
+        "🎙️ Burmese Voice",
+        list(VOICE_MAP.keys()),
     )
 
-with col2:
-    voice_choice = st.selectbox(
-        "🎙️ မြန်မာ Voice",
-        [
-            "👨 သီဟ — အမျိုးသား",
-            "👩 နီလာ — အမျိုးသမီး"
-        ]
+    st.markdown("---")
+
+    st.markdown("### Pipeline")
+
+    st.markdown(
+        """
+        ① Extract Audio  
+        ② AI Dialogue Detection  
+        ③ Burmese Translation  
+        ④ Burmese Voice Generation  
+        ⑤ Smart Timing Sync  
+        ⑥ Remove Original Audio  
+        ⑦ Final Video
+        """
     )
 
-voice_code = (
-    VOICE_THIHA
-    if "သီဟ" in voice_choice
-    else VOICE_NILAR
+    st.markdown("---")
+
+    st.caption(
+        "Gemini model is selected automatically from available "
+        "stable models."
+    )
+
+
+# ============================================================
+# UPLOAD
+# ============================================================
+
+uploaded_video = st.file_uploader(
+    "🎥 Movie / Video Upload",
+    type=["mp4", "mkv", "mov"],
+    help="MP4, MKV or MOV",
 )
 
 
-style_choice = st.selectbox(
-    "🎭 Translation Style",
-    [
-        "🎬 သဘာဝကျတဲ့ ဇာတ်လမ်းပြောသူ",
-        "🎥 Movie Recap Style",
-        "🗣️ ရိုးရိုးနားလည်လွယ်တဲ့ မြန်မာစကား"
-    ]
-)
-
-
-if uploaded_file:
-
-    st.info(
-        f"📁 {uploaded_file.name}  •  "
-        f"{uploaded_file.size / (1024 * 1024):.2f} MB"
-    )
-
-
-start_button = st.button(
-    "🚀 START AI DUBBING",
-    disabled=(uploaded_file is None)
-)
-
-
 # ============================================================
-# MAIN PIPELINE
+# START
 # ============================================================
 
-if start_button:
+if uploaded_video is not None:
 
-    if st.session_state.processing:
-        st.warning("Processing လုပ်နေဆဲပါ။")
-        st.stop()
-
-    st.session_state.processing = True
-    st.session_state.completed = False
-    st.session_state.video_bytes = None
-    st.session_state.script = ""
-    st.session_state.segments = []
-    st.session_state.last_error = ""
-
-    started_at = time.time()
-
-    st.session_state.progress_bar = st.progress(0)
-    st.session_state.status_box = st.empty()
-
-    work_dir = WORK_ROOT / str(int(time.time()))
-
-    audio_dir = work_dir / "tts"
-
-    try:
-        validate_environment()
-
-        work_dir.mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        audio_dir.mkdir(
-            parents=True,
-            exist_ok=True
-        )
-
-        input_video = work_dir / "input_video"
-
-        extracted_audio = work_dir / "source_audio.mp3"
-
-        dubbed_audio = work_dir / "burmese_dubbed.m4a"
-
-        output_video = work_dir / "final_burmese_dub.mp4"
-
-        # ----------------------------------------------------
-        # 1. SAVE VIDEO
-        # ----------------------------------------------------
-
-        set_status(
-            "1/7 🎬 Video",
-            "Video ကို workspace ထဲသိမ်းနေပါတယ်...",
-            5,
-            started_at
-        )
-
-        with open(input_video, "wb") as f:
-            f.write(uploaded_file.getbuffer())
-
-        video_duration = get_duration(input_video)
-
-        if video_duration <= 0:
-            raise RuntimeError(
-                "Video duration မဖတ်နိုင်ပါ။ File ပျက်နေနိုင်ပါတယ်။"
-            )
-
-        # ----------------------------------------------------
-        # 2. AUDIO EXTRACTION
-        # ----------------------------------------------------
-
-        set_status(
-            "2/7 🎧 Audio",
-            f"Audio ထုတ်နေပါတယ်... "
-            f"Video duration {format_time(video_duration)}",
-            12,
-            started_at
-        )
-
-        run_cmd(
-            [
-                "ffmpeg",
-                "-y",
-                "-i", str(input_video),
-                "-vn",
-                "-ac", "1",
-                "-ar", "16000",
-                "-c:a", "mp3",
-                "-b:a", "64k",
-                str(extracted_audio)
-            ],
-            timeout=600
-        )
-
-        # ----------------------------------------------------
-        # GEMINI CLIENT
-        # ----------------------------------------------------
-
-        api_key = st.secrets.get(
-            "GEMINI_API_KEY",
-            ""
-        ).strip().strip('"').strip("'")
-
-        if not api_key:
-            raise RuntimeError(
-                "GEMINI_API_KEY မတွေ့ပါ။ "
-                "Streamlit Secrets ထဲမှာ ထည့်ထားပါ။"
-            )
-
-        client = genai.Client(
-            api_key=api_key
-        )
-
-        # ----------------------------------------------------
-        # 3. TRANSCRIPT
-        # ----------------------------------------------------
-
-        set_status(
-            "3/7 📝 Transcript",
-            "Gemini က dialogue နဲ့ timestamp တွေထုတ်နေပါတယ်...",
-            20,
-            started_at
-        )
-
-        segments = generate_transcript(
-            client,
-            extracted_audio
-        )
-
-        # Remove segments outside video
-        valid_segments = []
-
-        for seg in segments:
-
-            seg["start"] = max(
-                0.0,
-                min(float(seg["start"]), video_duration)
-            )
-
-            seg["end"] = max(
-                seg["start"],
-                min(float(seg["end"]), video_duration)
-            )
-
-            if seg["end"] - seg["start"] >= 0.10:
-                valid_segments.append(seg)
-
-        segments = valid_segments
-
-        if not segments:
-            raise RuntimeError(
-                "အသုံးပြုနိုင်တဲ့ dialogue မတွေ့ပါ။"
-            )
-
-        st
+   
