@@ -81,7 +81,7 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
         
         subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-q:a", "0", "-map", "a", extracted_audio_path], check=True)
 
-        # Step 2 & 8: AI Transcription & Model Auto-selection
+        # Step 2 & 8: AI Transcription & Model Auto-selection with Retry Loop
         status_text.markdown("### 📝 Step 2/5: Transcribing Original Dialogue...")
         progress_bar.progress(35)
         eta_text.info("⏱️ ခန့်မှန်း ကြာချိန်: ~၂၀ စက္ကန့်")
@@ -96,11 +96,24 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
             "(ဇာတ်လမ်းပြောပြသူစတိုင် သဘာဝကျကျ ရေးသားပေးပါ။)."
         )
         
-        # အချက် - ၈: မှန်ကန်သော Model Name အသုံးပြုခြင်း
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=[uploaded_audio, prompt]
-        )
+        # 503 Server Error တက်ပါက အလိုအလျောက် ပြန်စမ်းမည့် Retry Mechanism
+        max_retries = 5
+        response = None
+        for attempt in range(max_retries):
+            try:
+                response = client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=[uploaded_audio, prompt]
+                )
+                break
+            except Exception as req_err:
+                if "503" in str(req_err) and attempt < max_retries - 1:
+                    wait_time = 5 * (attempt + 1)
+                    status_text.markdown(f"⚠️ Google Server ခေတ္တကျနေပါသည်။ {wait_time} စက္ကန့်စောင့်ပြီး အလိုအလျောက် ပြန်လည်ကြိုးစားနေပါသည်... (Attempt {attempt + 1}/{max_retries})")
+                    time.sleep(wait_time)
+                else:
+                    raise req_err
+
         burmese_script = response.text
 
         # Step 3: Voiceover Generation
