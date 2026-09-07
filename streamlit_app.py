@@ -96,8 +96,9 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
             "(ဇာတ်လမ်းပြောပြသူစတိုင် သဘာဝကျကျ ရေးသားပေးပါ။)."
         )
         
+        # အချက် - ၈: မှန်ကန်သော Model Name အသုံးပြုခြင်း
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             contents=[uploaded_audio, prompt]
         )
         burmese_script = response.text
@@ -114,11 +115,9 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
         progress_bar.progress(80)
         eta_text.info("⏱️ ခန့်မှန်း ကြာချိန်: ~၁၀ စက္ကန့်")
 
-        # Get video duration
         cmd_v_len = f"ffprobe -v error -show_entries format=duration -of default=noprintwrappers=1:nokey=1 {input_video_path}"
         vid_len = float(subprocess.check_output(cmd_v_len, shell=True).decode().strip())
 
-        # Get audio duration
         cmd_a_len = f"ffprobe -v error -show_entries format=duration -of default=noprintwrappers=1:nokey=1 {final_audio_path}"
         aud_len = float(subprocess.check_output(cmd_a_len, shell=True).decode().strip())
 
@@ -126,7 +125,6 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
         
         if aud_len > 0 and vid_len > 0:
             speed_ratio = aud_len / vid_len
-            # Keep ratio within reasonable bounds for natural listening
             speed_ratio = max(0.8, min(speed_ratio, 1.25))
             subprocess.run([
                 "ffmpeg", "-y", "-i", final_audio_path,
