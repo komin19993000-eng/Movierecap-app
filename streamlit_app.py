@@ -1,9 +1,11 @@
 import os
 import time
+import json
 import asyncio
 import subprocess
 import streamlit as st
 from google import genai
+from google.genai import types
 import edge_tts
 
 # UI Setup
@@ -22,15 +24,15 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-st.title("⚡ AI Movie Recap Automator")
-st.write("Upload video and configure voiceover settings to build automated Burmese recaps.")
+st.title("⚡ AI Movie Recap Automator (Sentence-Level Sync)")
+st.write("Upload video to generate scene-by-scene frame-synced Burmese recaps.")
 
 GEMINI_API_KEY = st.secrets.get("GEMINI_API_KEY", "").strip().strip('"').strip("'")
 
 if "recap_complete" not in st.session_state:
     st.session_state.recap_complete = False
-if "video_data" not in st.session_state:
-    st.session_state.video_data = None
+if "video_bytes" not in st.session_state:
+    st.session_state.video_bytes = None
 if "burmese_script" not in st.session_state:
     st.session_state.burmese_script = ""
 
@@ -38,12 +40,18 @@ async def generate_tts(text, output_file, voice_name):
     communicate = edge_tts.Communicate(text, voice_name)
     await communicate.save(output_file)
 
+def get_audio_duration(file_path):
+    cmd = f"ffprobe -v error -show_entries format=duration -of default=noprintwrappers=1:nokey=1 \"{file_path}\""
+    try:
+        output = subprocess.check_output(cmd, shell=True).decode().strip()
+        return float(output)
+    except:
+        return 0.0
+
 with st.container():
     col1, col2 = st.columns([2, 1])
-    
     with col1:
         uploaded_file = st.file_uploader("🎬 Upload Video File (MP4, MKV, MOV)", type=["mp4", "mkv", "mov"])
-        
     with col2:
         voice_choice = st.selectbox(
             "🎙️ Voiceover Voice Selection",
@@ -57,7 +65,7 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
         st.stop()
 
     st.session_state.recap_complete = False
-    st.session_state.video_data = None
+    st.session_state.video_bytes = None
 
     start_time = time.time()
     progress_bar = st.progress(0)
@@ -68,81 +76,109 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
     os.makedirs(work_dir, exist_ok=True)
     input_video_path = os.path.join(work_dir, "input_video.mp4")
     extracted_audio_path = os.path.join(work_dir, "extracted_audio.mp3")
-    final_audio_path = os.path.join(work_dir, "final_dub.mp3")
     output_video_path = os.path.join(work_dir, "output_recap.mp4")
 
     with open(input_video_path, "wb") as f:
-        f.write(uploaded_file.read())
+        f.write(uploaded_file.getbuffer())
 
     try:
-        # Step 1: Extract Audio
-        status_text.markdown("### 🔊 Step 1/5: Extracting Audio from Video...")
+        # Step 1: Audio Extraction
+        status_text.markdown("### 🔊 Step 1/5: Extracting Audio...")
         progress_bar.progress(15)
-        eta_text.info("⏱️ ခန့်မှန်း ကြာချိန်: ~၁၀ စက္ကန့်")
         subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-q:a", "0", "-map", "a", extracted_audio_path], check=True)
 
-        # Step 2: Gemini Prompt (မြန်မာစာသီးသန့် ထုတ်ပေးရန် ပြင်ဆင်ထားပါသည်)
-        status_text.markdown("### 📝 Step 2/5: Generating Burmese Storyteller Script...")
-        progress_bar.progress(35)
-        eta_text.info("⏱️ ခန့်မှန်း ကြာချိန်: ~၁၅ စက္ကန့်")
+        # Step 2: Extract Scene-by-Scene Timings with Gemini API
+        status_text.markdown("### 📝 Step 2/5: Analyzing Scene Dialogues & Timings...")
+        progress_bar.progress(30)
         
         client = genai.Client(api_key=GEMINI_API_KEY)
         uploaded_audio = client.files.upload(file=extracted_audio_path)
 
         prompt = (
-            "Listen to this audio and write a natural Burmese movie recap narration. "
-            "IMPORTANT: Output ONLY the final spoken Burmese narration script. "
-            "Do NOT include original transcripts, English text, scene descriptions, labels, or notes. "
-            "Provide ONLY the clean Burmese script ready to be read aloud."
+            "Analyze the audio and split it into sentence-level dialogue segments with precise timestamps. "
+            "Translate each segment into natural spoken Burmese narration. "
+            "Return a JSON array of objects, where each object has: "
+            "'start': start time in seconds (float), "
+            "'end': end time in seconds (float), "
+            "'text': Burmese translation text for that specific scene/dialogue."
         )
         
-        max_retries = 5
-        response = None
-        for attempt in range(max_retries):
-            try:
-                response = client.models.generate_content(
-                    model="gemini-3.6-flash",
-                    contents=[uploaded_audio, prompt]
-                )
-                break
-            except Exception as req_err:
-                if "503" in str(req_err) and attempt < max_retries - 1:
-                    time.sleep(5 * (attempt + 1))
-                else:
-                    raise req_err
-
-        burmese_script = response.text.strip()
-        st.session_state.burmese_script = burmese_script
-
-        # Step 3: Voiceover Generation
-        status_text.markdown(f"### 🎙️ Step 3/5: Generating Burmese Voiceover ({voice_choice})...")
-        progress_bar.progress(60)
-        asyncio.run(generate_tts(burmese_script, final_audio_path, voice_code))
-
-        # Step 4: Align Audio
-        status_text.markdown("### ⏱️ Step 4/5: Aligning Audio & Video Timing...")
-        progress_bar.progress(80)
-        adjusted_audio_path = os.path.join(work_dir, "adjusted_audio.mp3")
-        subprocess.run(["ffmpeg", "-y", "-i", final_audio_path, "-filter:a", "atempo=1.0", adjusted_audio_path], check=True)
-
-        # Step 5: Merge with Compression (File Size သေးငယ်ပြီး Download မြန်ဆန်စေရန်)
-        status_text.markdown("### 🎬 Step 5/5: Compressing & Merging Video...")
-        progress_bar.progress(95)
+        response = client.models.generate_content(
+            model="gemini-3.6-flash",
+            contents=[uploaded_audio, prompt],
+            config=types.GenerateContentConfig(
+                response_mime_type="application/json"
+            )
+        )
         
-        ffmpeg_cmd = [
-            "ffmpeg", "-y", "-i", input_video_path, "-i", adjusted_audio_path,
-            "-c:v", "libx264", "-crf", "28", "-preset", "ultrafast",
-            "-pix_fmt", "yuv420p", "-c:a", "aac", "-b:a", "128k",
-            "-map", "0:v:0", "-map", "1:a:0", "-shortest", output_video_path
-        ]
-        subprocess.run(ffmpeg_cmd, check=True)
+        segments = json.loads(response.text)
+        
+        full_text_script = "\n".join([f"[{seg['start']}s - {seg['end']}s] {seg['text']}" for seg in segments])
+        st.session_state.burmese_script = full_text_script
 
-        with open(output_video_path, "rb") as f:
-            st.session_state.video_data = f.read()
-            
-        st.session_state.recap_complete = True
-        progress_bar.progress(100)
-        status_text.markdown("✅ **လုပ်ငန်းစဉ် အစအဆုံး ပြီးမြောက်ပါပြီ!**")
+        # Step 3 & 4: Process Segment by Segment (Trim, TTS, Adjust Speed)
+        status_text.markdown("### ⏱️ Step 3 & 4/5: Syncing Audio & Video per Scene...")
+        progress_bar.progress(60)
+        
+        processed_clips = []
+        concat_list_file = os.path.join(work_dir, "concat_list.txt")
+        
+        with open(concat_list_file, "w") as cl_file:
+            for idx, seg in enumerate(segments):
+                start_t = seg.get("start", 0)
+                end_t = seg.get("end", start_t + 2)
+                orig_dur = max(end_t - start_t, 0.5)
+                text = seg.get("text", "")
+                
+                if not text.strip():
+                    continue
+
+                seg_video = os.path.join(work_dir, f"clip_{idx}.mp4")
+                seg_tts = os.path.join(work_dir, f"tts_{idx}.mp3")
+                seg_final = os.path.join(work_dir, f"out_{idx}.mp4")
+
+                # 1. Video Clip Segment ဖြတ်ယူခြင်း
+                subprocess.run([
+                    "ffmpeg", "-y", "-ss", str(start_t), "-i", input_video_path,
+                    "-t", str(orig_dur), "-c:v", "libx264", "-an", seg_video
+                ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+
+                # 2. ဒိုင်ယာလော့ခ်အတွက် မြန်မာစာ TTS အသံထုတ်ခြင်း
+                asyncio.run(generate_tts(text, seg_tts, voice_code))
+                tts_dur = get_audio_duration(seg_tts)
+
+                # 3. အသံနဲ့ ဗီဒီယို ဒိုင်ယာလော့ခ်ချင်းစီ တိကျအောင် Speed ညှိခြင်း
+                if tts_dur > 0:
+                    pts_speed = orig_dur / tts_dur
+                    pts_speed = max(0.5, min(pts_speed, 2.0)) # Extreme distortion မဖြစ်အောင် ထိန်းထားခြင်း
+                    
+                    subprocess.run([
+                        "ffmpeg", "-y", "-i", seg_video, "-i", seg_tts,
+                        "-filter_complex", f"[0:v]setpts={1/pts_speed}*PTS[v]",
+                        "-map", "[v]", "-map", "1:a:0", "-c:v", "libx264", "-c:a", "aac",
+                        "-shortest", seg_final
+                    ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                else:
+                    seg_final = seg_video
+
+                cl_file.write(f"file '{os.path.basename(seg_final)}'\n")
+
+        # Step 5: Concat All Synced Segments
+        status_text.markdown("### 🎬 Step 5/5: Merging Dialogue-Synced Clips...")
+        progress_bar.progress(90)
+        
+        subprocess.run([
+            "ffmpeg", "-y", "-f", "concat", "-safe", "0", "-i", concat_list_file,
+            "-c:v", "libx264", "-preset", "ultrafast", "-crf", "26",
+            "-pix_fmt", "yuv420p", "-c:a", "aac", output_video_path
+        ], check=True)
+
+        if os.path.exists(output_video_path):
+            with open(output_video_path, "rb") as f:
+                st.session_state.video_bytes = f.read()
+            st.session_state.recap_complete = True
+            progress_bar.progress(100)
+            status_text.markdown("✅ **ဒိုင်ယာလော့ခ်တစ်ခုချင်းစီအလိုက် အသံ/ဗီဒီယို တိကျစွာ ကိုက်ညှိပြီးပါပြီ!**")
 
     except Exception as e:
         progress_bar.progress(0)
@@ -150,17 +186,17 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
         eta_text.empty()
         st.error(f"Error Details: {str(e)}")
 
-# Display & Fast Download
-if st.session_state.recap_complete and st.session_state.video_data:
+# Display & Download
+if st.session_state.recap_complete and st.session_state.video_bytes:
     st.markdown("---")
-    st.subheader("📜 Generated Burmese Script:")
-    st.write(st.session_state.burmese_script)
+    st.subheader("📜 Generated Scene Dialogue Timestamps & Script:")
+    st.text_area("Timestamps", st.session_state.burmese_script, height=200)
 
-    st.video(st.session_state.video_data)
+    st.video(st.session_state.video_bytes, format="video/mp4")
 
     st.download_button(
-        label="📥 Download Recap Video (Optimized Size)",
-        data=st.session_state.video_data,
-        file_name="movie_recap_final.mp4",
+        label="📥 Download Dialogue-Synced Recap Video",
+        data=st.session_state.video_bytes,
+        file_name="movie_recap_synced.mp4",
         mime="video/mp4"
     )
