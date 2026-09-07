@@ -87,7 +87,7 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
         progress_bar.progress(15)
         subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-q:a", "0", "-map", "a", extracted_audio_path], check=True)
 
-        # Step 2: Extract Scene-by-Scene Timings with Gemini API
+        # Step 2: Extract Scene-by-Scene Timings (With 503 Auto-Retry & Model Fallback)
         status_text.markdown("### 📝 Step 2/5: Analyzing Scene Dialogues & Timings...")
         progress_bar.progress(30)
         
@@ -103,24 +103,42 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
             "'text': Burmese translation text for that specific scene/dialogue."
         )
         
-        response = client.models.generate_content(
-            model="gemini-3.6-flash",
-            contents=[uploaded_audio, prompt],
-            config=types.GenerateContentConfig(
-                response_mime_type="application/json"
-            )
-        )
+        models_to_try = ["gemini-3.6-flash", "gemini-2.5-flash"]
+        response = None
+        
+        for model_name in models_to_try:
+            for attempt in range(5):
+                try:
+                    response = client.models.generate_content(
+                        model=model_name,
+                        contents=[uploaded_audio, prompt],
+                        config=types.GenerateContentConfig(
+                            response_mime_type="application/json"
+                        )
+                    )
+                    break
+                except Exception as req_err:
+                    if "503" in str(req_err) and attempt < 4:
+                        wait_sec = 4 * (attempt + 1)
+                        status_text.markdown(f"⚠️ {model_name} မအားသေးပါ ({wait_sec}s စောင့်ပြီး ပြန်စမ်းနေသည်)...")
+                        time.sleep(wait_sec)
+                    else:
+                        break
+            if response is not None:
+                break
+
+        if response is None:
+            raise RuntimeError("Google Server လိုင်းခေတ္တကျနေပါသည်။ စက္ကန့်ပိုင်းစောင့်ပြီး ပြန်လည် စမ်းသပ်ပေးပါ။")
         
         segments = json.loads(response.text)
         
-        full_text_script = "\n".join([f"[{seg['start']}s - {seg['end']}s] {seg['text']}" for seg in segments])
+        full_text_script = "\n".join([f"[{seg.get('start', 0)}s - {seg.get('end', 0)}s] {seg.get('text', '')}" for seg in segments])
         st.session_state.burmese_script = full_text_script
 
-        # Step 3 & 4: Process Segment by Segment (Trim, TTS, Adjust Speed)
+        # Step 3 & 4: Process Segment by Segment
         status_text.markdown("### ⏱️ Step 3 & 4/5: Syncing Audio & Video per Scene...")
         progress_bar.progress(60)
         
-        processed_clips = []
         concat_list_file = os.path.join(work_dir, "concat_list.txt")
         
         with open(concat_list_file, "w") as cl_file:
@@ -137,20 +155,20 @@ if uploaded_file and st.button("🚀 Start Recap Generation Process"):
                 seg_tts = os.path.join(work_dir, f"tts_{idx}.mp3")
                 seg_final = os.path.join(work_dir, f"out_{idx}.mp4")
 
-                # 1. Video Clip Segment ဖြတ်ယူခြင်း
+                # Video Clip Segment ဖြတ်ယူခြင်း
                 subprocess.run([
                     "ffmpeg", "-y", "-ss", str(start_t), "-i", input_video_path,
                     "-t", str(orig_dur), "-c:v", "libx264", "-an", seg_video
                 ], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
-                # 2. ဒိုင်ယာလော့ခ်အတွက် မြန်မာစာ TTS အသံထုတ်ခြင်း
+                # မြန်မာစာ TTS အသံထုတ်ခြင်း
                 asyncio.run(generate_tts(text, seg_tts, voice_code))
                 tts_dur = get_audio_duration(seg_tts)
 
-                # 3. အသံနဲ့ ဗီဒီယို ဒိုင်ယာလော့ခ်ချင်းစီ တိကျအောင် Speed ညှိခြင်း
+                # အသံနဲ့ ဗီဒီယို ဒိုင်ယာလော့ခ်ချင်းစီ တိကျအောင် Speed ညှိခြင်း
                 if tts_dur > 0:
                     pts_speed = orig_dur / tts_dur
-                    pts_speed = max(0.5, min(pts_speed, 2.0)) # Extreme distortion မဖြစ်အောင် ထိန်းထားခြင်း
+                    pts_speed = max(0.5, min(pts_speed, 2.0))
                     
                     subprocess.run([
                         "ffmpeg", "-y", "-i", seg_video, "-i", seg_tts,
