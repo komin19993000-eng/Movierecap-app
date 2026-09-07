@@ -22,7 +22,8 @@ st.markdown("""
 st.title("⚡ Auto Movie Recap Engine")
 st.write("Upload video to automatically generate Burmese dub/voiceover recap.")
 
-GEMINI_API_KEY = st.sidebar.text_input("Enter Gemini API Key", type="password")
+# Sidebar API Key Input (Password type ဖယ်ထုတ်ထားသည်)
+GEMINI_API_KEY = st.sidebar.text_input("Enter Gemini API Key").strip()
 
 async def generate_tts(text, output_file):
     communicate = edge_tts.Communicate(text, "my-MM-ThihaNeural")
@@ -58,9 +59,11 @@ if uploaded_file and st.button("🚀 Start Processing"):
         status_text.markdown("**[Step 2/4]** 🧠 Gemini AI မှ မြန်မာလို ဘာသာပြန်နေပါသည်။")
         progress_bar.progress(50)
         
+        # Environment Variable ထဲသို့ API Key တိုက်ရိုက်ထည့်သွင်းခြင်း
+        os.environ["GEMINI_API_KEY"] = GEMINI_API_KEY
         genai.configure(api_key=GEMINI_API_KEY)
-        audio_file = genai.upload_file(path=extracted_audio_path)
         
+        audio_file = genai.upload_file(path=extracted_audio_path)
         model = genai.GenerativeModel("gemini-1.5-flash")
         prompt = "Listen to the dialogue and summarize/translate into natural Burmese movie recap script."
         response = model.generate_content([audio_file, prompt])
