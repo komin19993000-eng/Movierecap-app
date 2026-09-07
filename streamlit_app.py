@@ -38,7 +38,7 @@ def get_gemini_client():
     return genai.Client(api_key=GEMINI_API_KEY)
 
 def call_gemini_with_fallback(client, contents, prompt):
-    models = ["gemini-2.5-flash", "gemini-1.5-pro", "gemini-1.5-flash"]
+    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest"]
     last_err = None
     for m in models:
         try:
