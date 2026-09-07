@@ -104,7 +104,7 @@ def get_available_models(client):
         return []
 
 
-def generate_with_fallback(client, contents):
+def generate_with_fallback(client, contents, max_retries=3):
     available = get_available_models(client)
 
     if available:
@@ -113,30 +113,38 @@ def generate_with_fallback(client, contents):
             for model in MODEL_CANDIDATES
             if model in available
         ]
+        if not candidates:
+            candidates = MODEL_CANDIDATES
     else:
         candidates = MODEL_CANDIDATES
 
     errors = []
 
     for model in candidates:
-        try:
-            response = client.models.generate_content(
-                model=model,
-                contents=contents
-            )
+        for attempt in range(max_retries):
+            try:
+                response = client.models.generate_content(
+                    model=model,
+                    contents=contents
+                )
 
-            text = getattr(response, "text", None)
+                text = getattr(response, "text", None)
 
-            if text:
-                return model, text
+                if text:
+                    return model, text
 
-        except Exception as error:
-            errors.append(
-                f"{model}: {error}"
-            )
+            except Exception as error:
+                err_msg = str(error)
+                errors.append(f"{model} (Attempt {attempt+1}): {err_msg}")
+                
+                # 503 UNAVAILABLE သို့မဟုတ် Rate Limit တက်ပါက ခဏစောင့်ပြီး ပြန်လည် Try ရန်
+                if "503" in err_msg or "UNAVAILABLE" in err_msg or "429" in err_msg:
+                    time.sleep(3 * (attempt + 1))
+                else:
+                    break
 
     raise RuntimeError(
-        "Gemini model အားလုံး failed:\n"
+        "Gemini model အားလုံး high demand ကြောင့် မရသေးပါ (ခဏစောင့်ပြီး ပြန်လည် စမ်းသပ်ပါ):\n"
         + "\n".join(errors[-5:])
     )
 
@@ -559,6 +567,20 @@ if uploaded_video:
                         file=str(audio_path)
                     )
                 )
+
+                # Audio processing အဆင်သင့်ဖြစ်အောင် အချိန်စောင့်သည့် မက္ကနိဇမ်
+                while True:
+                    file_info = client.files.get(name=uploaded_audio.name)
+                    state = getattr(file_info, "state", None)
+                    state_name = getattr(state, "name", str(state))
+                    
+                    if state_name == "ACTIVE":
+                        uploaded_audio = file_info
+                        break
+                    elif state_name == "FAILED":
+                        raise RuntimeError("Gemini audio processing failed.")
+                    
+                    time.sleep(2)
 
                 prompt = """
 Listen to the entire uploaded audio.
