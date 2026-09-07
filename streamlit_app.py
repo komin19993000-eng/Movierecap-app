@@ -3,7 +3,7 @@ import time
 import asyncio
 import subprocess
 import streamlit as st
-import google.genai as genai
+import google.generativeai as genai
 import edge_tts
 
 # 1. UI Configuration (Neon Dark Theme)
@@ -31,26 +31,24 @@ st.write("Upload video to automatically generate Burmese dub/voiceover recap.")
 
 GEMINI_API_KEY = st.sidebar.text_input("Enter Gemini API Key", type="password")
 
-def get_gemini_client():
+def configure_gemini():
     if not GEMINI_API_KEY:
         st.error("🔑 ကျေးဇူးပြု၍ Gemini API Key ထည့်သွင်းပေးပါ။")
         st.stop()
-    return genai.Client(api_key=GEMINI_API_KEY)
+    genai.configure(api_key=GEMINI_API_KEY)
 
-def call_gemini_with_fallback(client, contents, prompt):
-    models = ["gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-pro-latest"]
-    last_err = None
-    for m in models:
-        try:
-            response = client.models.generate_content(
-                model=m,
-                contents=[contents, prompt]
-            )
-            return response.text
-        except Exception as e:
-            last_err = e
-            continue
-    raise Exception(f"AI models error: {str(last_err)}")
+def generate_script_with_gemini(audio_path, prompt):
+    configure_gemini()
+    audio_file = genai.upload_file(path=audio_path)
+    
+    # Wait for processing
+    while audio_file.state.name == "PROCESSING":
+        time.sleep(2)
+        audio_file = genai.get_file(audio_file.name)
+        
+    model = genai.GenerativeModel("gemini-1.5-flash")
+    response = model.generate_content([audio_file, prompt])
+    return response.text
 
 async def generate_tts(text, output_file, voice="my-MM-ThihaNeural"):
     communicate = edge_tts.Communicate(text, voice)
@@ -81,11 +79,9 @@ if uploaded_file and st.button("🚀 Start Processing"):
         # Step 2
         status_text.markdown("**[Step 2/5 - 40%]** 🧠 Gemini AI မှ မြန်မာလို ဘာသာပြန်နေပါသည်။")
         progress_bar.progress(40)
-        client = get_gemini_client()
-        uploaded_audio_file = client.files.upload(file=extracted_audio_path)
         
         prompt = "Listen to dialogue and translate to natural Burmese movie recap style narrative text."
-        burmese_script = call_gemini_with_fallback(client, uploaded_audio_file, prompt)
+        burmese_script = generate_script_with_gemini(extracted_audio_path, prompt)
 
         # Step 3
         status_text.markdown("**[Step 3/5 - 60%]** 🎙️ Voiceover အသံ ထုတ်လုပ်နေပါသည်။")
