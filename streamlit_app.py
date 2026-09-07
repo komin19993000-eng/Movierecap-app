@@ -3,7 +3,6 @@ import asyncio
 import subprocess
 import streamlit as st
 from google import genai
-from google.genai import types
 import edge_tts
 
 st.set_page_config(page_title="AI Movie Recap Automator", layout="wide")
@@ -47,17 +46,14 @@ if uploaded_file and st.button("🚀 Start Processing"):
         status_text.markdown("**[Step 2/4]** 🧠 Gemini AI မှ မြန်မာလို ဘာသာပြန်နေပါသည်။")
         progress_bar.progress(50)
         
-        # Client setup with explicit API version
-        client = genai.Client(
-            api_key=GEMINI_API_KEY,
-            http_options={'api_version': 'v1alpha'}
-        )
-        
+        client = genai.Client(api_key=GEMINI_API_KEY)
         uploaded_audio = client.files.upload(file=extracted_audio_path)
         
         prompt = "Listen to the dialogue and summarize/translate into natural Burmese movie recap script."
+        
+        # Google မှ ညွှန်းဆိုထားသော Model Name အသစ်
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model="gemini-3.6-flash",
             contents=[uploaded_audio, prompt]
         )
         burmese_script = response.text
