@@ -1,5 +1,4 @@
 import os
-import time
 import asyncio
 import subprocess
 import streamlit as st
@@ -14,14 +13,9 @@ st.markdown("""
     h1, h2, h3 { color: #00f2fe !important; }
     .stButton>button {
         background: linear-gradient(45deg, #00f2fe, #4facfe);
-        color: #000000 !important;
-        font-weight: bold;
-        border: none;
-        border-radius: 8px;
-        padding: 12px 24px;
+        color: #000000 !important; font-weight: bold; border: none; border-radius: 8px; padding: 12px 24px;
     }
     .stProgress > div > div > div > div { background-color: #00f2fe; }
-    .error-box { background-color: #2a080c; border: 1px solid #ff4b4b; padding: 15px; border-radius: 8px; color: #ff6b6b; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -30,8 +24,8 @@ st.write("Upload video to automatically generate Burmese dub/voiceover recap.")
 
 GEMINI_API_KEY = st.sidebar.text_input("Enter Gemini API Key", type="password")
 
-async def generate_tts(text, output_file, voice="my-MM-ThihaNeural"):
-    communicate = edge_tts.Communicate(text, voice)
+async def generate_tts(text, output_file):
+    communicate = edge_tts.Communicate(text, "my-MM-ThihaNeural")
     await communicate.save(output_file)
 
 uploaded_file = st.file_uploader("🎬 Upload Video File (MP4, MKV, MOV)", type=["mp4", "mkv", "mov"])
@@ -55,50 +49,39 @@ if uploaded_file and st.button("🚀 Start Processing"):
         f.write(uploaded_file.read())
 
     try:
-        # Step 1
-        status_text.markdown("**[Step 1/5 - 20%]** 🔊 Audio ခွဲထုတ်နေပါသည်။")
-        progress_bar.progress(20)
-        subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-q:a", "0", "-map", "a", extracted_audio_path], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Step 1: Extract Audio
+        status_text.markdown("**[Step 1/4]** 🔊 Audio ခွဲထုတ်နေပါသည်။")
+        progress_bar.progress(25)
+        subprocess.run(["ffmpeg", "-y", "-i", input_video_path, "-q:a", "0", "-map", "a", extracted_audio_path], check=True)
 
-        # Step 2
-        status_text.markdown("**[Step 2/5 - 40%]** 🧠 Gemini AI မှ မြန်မာလို ဘာသာပြန်နေပါသည်။")
-        progress_bar.progress(40)
+        # Step 2: Gemini Translation
+        status_text.markdown("**[Step 2/4]** 🧠 Gemini AI မှ မြန်မာလို ဘာသာပြန်နေပါသည်။")
+        progress_bar.progress(50)
         
         genai.configure(api_key=GEMINI_API_KEY)
         audio_file = genai.upload_file(path=extracted_audio_path)
         
-        while audio_file.state.name == "PROCESSING":
-            time.sleep(2)
-            audio_file = genai.get_file(audio_file.name)
-            
         model = genai.GenerativeModel("gemini-1.5-flash")
-        prompt = "Listen to dialogue and translate to natural Burmese movie recap style narrative text."
+        prompt = "Listen to the dialogue and summarize/translate into natural Burmese movie recap script."
         response = model.generate_content([audio_file, prompt])
         burmese_script = response.text
 
-        # Step 3
-        status_text.markdown("**[Step 3/5 - 60%]** 🎙️ Voiceover အသံ ထုတ်လုပ်နေပါသည်။")
-        progress_bar.progress(60)
+        # Step 3: Voiceover (Edge-TTS)
+        status_text.markdown("**[Step 3/4]** 🎙️ Voiceover အသံ ထုတ်လုပ်နေပါသည်။")
+        progress_bar.progress(75)
         asyncio.run(generate_tts(burmese_script, final_audio_path))
 
-        # Step 4
-        status_text.markdown("**[Step 4/5 - 80%]** 🎬 အသံအသစ်နှင့် ဗီဒီယို ပေါင်းစပ်နေပါသည်။")
-        progress_bar.progress(80)
+        # Step 4: Merge Audio & Video
+        status_text.markdown("**[Step 4/4]** 🎬 အသံနှင့် ဗီဒီယို ပေါင်းစပ်နေပါသည်။")
+        progress_bar.progress(90)
         ffmpeg_cmd = [
-            "ffmpeg", "-y",
-            "-i", input_video_path,
-            "-i", final_audio_path,
-            "-c:v", "copy",
-            "-map", "0:v:0",
-            "-map", "1:a:0",
-            "-shortest",
-            output_video_path
+            "ffmpeg", "-y", "-i", input_video_path, "-i", final_audio_path,
+            "-c:v", "copy", "-map", "0:v:0", "-map", "1:a:0", "-shortest", output_video_path
         ]
-        subprocess.run(ffmpeg_cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        subprocess.run(ffmpeg_cmd, check=True)
 
-        # Step 5
         progress_bar.progress(100)
-        status_text.markdown("**[Step 5/5 - 100%]** ✅ ပြီးမြောက်ပါပြီ။")
+        status_text.markdown("✅ **ပြီးမြောက်ပါပြီ!**")
         st.success("🎉 Video Recap ပြုလုပ်ခြင်း အောင်မြင်ပါသည်။")
         st.video(output_video_path)
         
@@ -108,4 +91,4 @@ if uploaded_file and st.button("🚀 Start Processing"):
     except Exception as e:
         progress_bar.progress(0)
         status_text.empty()
-        st.markdown(f'<div class="error-box"><h4>❌ Error Occurred</h4><p>{str(e)}</p></div>', unsafe_allow_html=True)
+        st.error(f"Error Details: {str(e)}")
