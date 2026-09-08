@@ -27,7 +27,6 @@ VOICES = {
     "နီလာ (အမျိုးသမီး)": "my-MM-NilarNeural",
 }
 
-# Traffic နည်းပြီး Stable ဖြစ်သော Model Candidate များ
 MODELS = [
     "gemini-2.5-flash",
     "gemini-1.5-flash",
@@ -94,9 +93,9 @@ def extract_audio(video, out):
             str(video),
             "-vn",
             "-ac",
-            "1",
+            "2",
             "-ar",
-            "16000",
+            "48000",
             "-c:a",
             "pcm_s16le",
             str(out)
@@ -288,47 +287,25 @@ def analyze(c, audio, dur, status):
         )
     )
 
+    # Dialogue တိုင် တန်းမကျန် ဖမ်းယူရန် Prompt ကို အတိအကျ ပြင်ထားသည်
     prompt = f"""
-You are a professional movie dubbing editor.
+You are a video dubbing transcriber.
 
-Analyze the uploaded movie audio and find ALL meaningful spoken dialogue.
+IMPORTANT: Do NOT summarize. Do NOT omit any lines. Transcribe EVERY SINGLE spoken word or dialogue sentence from the beginning to the end of the video.
 
-Do not invent dialogue.
+Tasks:
+1. Listen carefully and extract ALL spoken dialogues from 0.0s to {dur:.2f}s.
+2. For every dialogue line, record precise start and end times (in seconds).
+3. Translate EVERY line into natural conversational spoken Burmese suitable for movie recaps.
 
-Keep chronological order.
+Return ONLY a valid JSON list.
 
-Return approximate start/end timestamps in seconds.
-
-Translate every line into natural conversational Burmese suitable for professional movie dubbing.
-
-Preserve:
-- meaning
-- emotion
-- names
-- relationships
-- context
-
-Exclude:
-- music
-- sound effects
-- background noise
-
-Keep each Burmese line concise enough to fit its timestamp.
-
-Do not merge unrelated lines.
-
-Return ONLY valid JSON.
-
-Audio duration:
-{dur:.2f} seconds.
-
-Format:
-
+Example format:
 [
   {{
-    "start": 10.25,
-    "end": 13.80,
-    "burmese": "မြန်မာဘာသာပြန်"
+    "start": 0.5,
+    "end": 3.2,
+    "burmese": "စကားပြော ဘာသာပြန်"
   }}
 ]
 """
@@ -362,7 +339,7 @@ Format:
                         prompt
                     ],
                     config=types.GenerateContentConfig(
-                        temperature=0.15
+                        temperature=0.10
                     )
                 )
 
@@ -591,32 +568,13 @@ def make_burmese_audio(
     segments,
     voice,
     dur,
+    orig_audio,
     work,
     progress
 ):
 
     files = []
     total = len(segments)
-
-    # 1. တိတ်ဆိတ်သော Base track ဖန်တီးပါ
-    base_silence = work / "base_silence.wav"
-    run_cmd(
-        [
-            FFMPEG,
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-f",
-            "lavfi",
-            "-i",
-            f"anullsrc=r=48000:cl=stereo:d={dur:.3f}",
-            "-c:a",
-            "pcm_s16le",
-            str(base_silence)
-        ],
-        120
-    )
 
     for i, s in enumerate(
         segments,
@@ -666,7 +624,7 @@ def make_burmese_audio(
             "Burmese dialogue မရှိပါ။"
         )
 
-    # 2. Base Silence ပါဝင်သော inputs စာရင်း
+    # Input 0 အဖြစ် မူရင်း Video Audio ကို Background အဖြစ် ထည့်သွင်းထားသည်
     cmd = [
         FFMPEG,
         "-y",
@@ -674,7 +632,7 @@ def make_burmese_audio(
         "-loglevel",
         "error",
         "-i",
-        str(base_silence)
+        str(orig_audio)
     ]
 
     for _, f in files:
@@ -683,12 +641,12 @@ def make_burmese_audio(
             str(f)
         ]
 
+    # Original Background Audio ကို Volume 25% အထိ လျှော့ပြီး အနောက်ကနေ တိုးတိုးလေး ဖွင့်ထားမည်
     filters = [
-        "[0:a]aformat=sample_rates=48000:channel_layouts=stereo[a0]"
+        "[0:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=0.25[bg]"
     ]
-    labels = ["[a0]"]
+    labels = ["[bg]"]
 
-    # 3. Audio delay နှင့် format filtering
     for i, (start, _) in enumerate(files, start=1):
         ms = int(round(start * 1000))
         label = f"a{i}"
@@ -700,7 +658,7 @@ def make_burmese_audio(
         )
         labels.append(f"[{label}]")
 
-    # 4. normalize=0 ပါဝင်သော amix filter ဖြင့် merge လုပ်ပါ (အသံမတိုး/မပျောက်စေရန်)
+    # Original BGM + Burmese Dubbing Voice များကို စနစ်တကျ မူလ Duration အတိုင်း ပေါင်းပါမည်
     filters.append(
         "".join(labels)
         + f"amix=inputs={len(labels)}:duration=first:dropout_transition=0:normalize=0[mix]"
@@ -716,6 +674,8 @@ def make_burmese_audio(
         ";".join(filters),
         "-map",
         "[mix]",
+        "-t",
+        f"{dur:.3f}",
         "-c:a",
         "aac",
         "-b:a",
@@ -1074,6 +1034,7 @@ if start:
                 seg,
                 VOICES[voice_name],
                 dur,
+                audio,
                 work,
                 prog
             )
