@@ -55,7 +55,7 @@ def duration(path):
 def extract_audio(video, out):
     r = run_cmd([
         FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
-        "-i", str(video), "-vn", "-ac", "2", "-ar", "48000",
+        "-i", str(video), "-vn", "-ac", "1", "-ar", "16000",
         "-c:a", "pcm_s16le", str(out)
     ], 900)
     if r.returncode or not out.exists() or out.stat().st_size < 1000:
@@ -106,34 +106,46 @@ def analyze_audio_full(client, audio_path, total_dur, status_box):
     status_box.update(label="Gemini API သို့ Audio တင်ပို့နေသည်...", state="running")
     uploaded = client.files.upload(file=str(audio_path))
 
+    # Gemini ဖိုင် စစ်ဆေးမှု ပြည့်စုံအောင် ခဏစောင့်ပေးခြင်း
+    time.sleep(2)
+
     prompt = f"""
-You are a video dubbing transcriber.
-Transcribe EVERY SINGLE spoken dialogue line from start (0.0s) to end ({total_dur:.2f}s).
-Do NOT summarize. Do NOT skip any small phrase or short sentence.
+Transcribe every spoken line in this audio file from start to end (duration: {total_dur:.2f} seconds).
+Translate each spoken segment into clear, spoken Burmese for video dubbing.
 
-Translate every line into natural spoken Burmese for dubbing.
-
-Return strictly a JSON array of objects:
+Output format MUST be a strict JSON array of objects with keys: "start", "end", "burmese".
+Example:
 [
-  {{"start": 1.2, "end": 3.5, "burmese": "မြန်မာစာသား"}}
+  {{"start": 0.5, "end": 2.1, "burmese": "မင်္ဂလာပါ"}}
 ]
 """
+    errors = []
     for model in MODELS:
         try:
-            status_box.update(label=f"Model ({model}) ဖြင့် Dialogue အပြည့်အဝ ဖတ်ယူနေသည်...", state="running")
+            status_box.update(label=f"Model ({model}) ဖြင့် Dialogue ဖတ်ယူနေသည်...", state="running")
             resp = client.models.generate_content(
                 model=model,
                 contents=[types.Part.from_uri(file_uri=uploaded.uri, mime_type="audio/wav"), prompt],
-                config=types.GenerateContentConfig(temperature=0.1)
+                config=types.GenerateContentConfig(
+                    temperature=0.2,
+                    response_mime_type="application/json"
+                )
             )
-            raw = json.loads(clean_json(getattr(resp, "text", "")))
-            segments = normalize_segments(raw, total_dur)
+            
+            raw_text = getattr(resp, "text", "")
+            if not raw_text:
+                continue
+
+            raw_json = json.loads(clean_json(raw_text))
+            segments = normalize_segments(raw_json, total_dur)
+            
             if segments:
                 return segments, model
-        except Exception:
+        except Exception as e:
+            errors.append(f"{model}: {e}")
             continue
 
-    raise RuntimeError("AI ထံမှ Dialogue များ ဖတ်ယူ၍ မရပါ။")
+    raise RuntimeError(f"AI ထံမှ Dialogue များ ဖတ်ယူ၍ မရပါ။ (အသေးစိတ်: {'; '.join(errors)})")
 
 
 async def tts_async(text, voice, out):
