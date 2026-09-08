@@ -185,7 +185,6 @@ def fit_tts_audio(src, out, slot_duration):
         "-ar", "48000", "-ac", "2", "-c:a", "pcm_s16le", str(out)
     ], 180)
 
-
 def build_final_audio(segments, voice, total_dur, orig_audio, work_dir, status_box):
     tts_files = []
     total = len(segments)
@@ -199,16 +198,17 @@ def build_final_audio(segments, voice, total_dur, orig_audio, work_dir, status_b
         fit_tts_audio(raw, fitted, max(0.2, s["end"] - s["start"]))
         tts_files.append((s["start"], fitted))
 
-    status_box.update(label="Audio များကို မူရင်း Background Sound နှင့် ပေါင်းစပ်နေသည်...", state="running")
+    status_box.update(label="မြန်မာ Audio များကို ပေါင်းစပ်နေသည်...", state="running")
 
-    cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error", "-i", str(orig_audio)]
+    # မူရင်း Audio ကို ဖြုတ်ပြီး မြန်မာအသံများကိုပဲ အချိန်ကိုက် ပေါင်းစပ်ခြင်း
+    cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error"]
     for _, f in tts_files:
         cmd += ["-i", str(f)]
 
-    filters = ["[0:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=0.25[bg]"]
-    labels = ["[bg]"]
+    filters = []
+    labels = []
 
-    for i, (start_time, _) in enumerate(tts_files, start=1):
+    for i, (start_time, _) in enumerate(tts_files):
         ms = int(round(start_time * 1000))
         label = f"a{i}"
         filters.append(f"[{i}:a]aformat=sample_rates=48000:channel_layouts=stereo,adelay={ms}|{ms}[{label}]")
@@ -228,6 +228,7 @@ def build_final_audio(segments, voice, total_dur, orig_audio, work_dir, status_b
         raise RuntimeError(f"Audio Mixing မအောင်မြင်ပါ။\n{r.stderr}")
 
     return out_audio
+
 
 
 def merge_video_audio(video_path, audio_path, output_path):
