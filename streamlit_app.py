@@ -104,14 +104,11 @@ def analyze_chunk(client, chunk_file, offset, chunk_dur):
     uploaded = client.files.upload(file=str(chunk_file))
     time.sleep(1)
 
-    prompt = f"""
-Transcribe EVERY spoken sentence in this audio snippet (duration: {chunk_dur:.2f}s).
-Do NOT summarize. Translate each sentence into natural spoken Burmese for video dubbing.
-
-Return strictly a JSON array of objects with the key "burmese":
-[
-  {{"burmese": "မြန်မာစာသား"}}
-]
+    prompt = """
+Listen to the spoken audio and translate every sentence into natural spoken Burmese for video dubbing.
+Output MUST be a valid JSON array of strings containing the Burmese translations.
+Example: ["မင်္ဂလာပါ", "ဘယ်သူလဲ"]
+If there is no spoken speech, return an empty array [].
 """
     for model in MODELS:
         try:
@@ -131,11 +128,15 @@ Return strictly a JSON array of objects with the key "burmese":
             lines = []
             if isinstance(raw_json, list):
                 for item in raw_json:
-                    if isinstance(item, dict) and item.get("burmese"):
-                        lines.append(str(item["burmese"]).strip())
+                    if isinstance(item, str) and item.strip():
+                        lines.append(item.strip())
+                    elif isinstance(item, dict):
+                        # Any string value found in dict
+                        val = next((v for v in item.values() if isinstance(v, str) and v.strip()), None)
+                        if val:
+                            lines.append(val.strip())
 
             if lines:
-                # တွေ့ရှိသမျှ စကားပြောများကို Chunk အတွင်း အလိုက်သင့် အချိန်ခွဲဝေပေးခြင်း
                 slot_time = chunk_dur / len(lines)
                 segs = []
                 for i, text in enumerate(lines):
@@ -162,7 +163,7 @@ def analyze_audio_full(client, audio_path, status_box):
         all_segments.extend(segs)
 
     if not all_segments:
-        raise RuntimeError("Video ထဲမှ စကားပြော Dialogue များ ဖတ်ယူ၍ မရပါ။")
+        raise RuntimeError("Video ထဲတွင် စကားပြော မတွေ့ရှိပါ။ သို့မဟုတ် Gemini API မှ စကားပြော ဖတ်ယူ၍ မရပါ။")
 
     return all_segments, used_model, total_dur
 
