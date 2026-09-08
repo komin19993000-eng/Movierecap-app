@@ -65,22 +65,29 @@ def get_client():
 
 
 def analyze_audio_full(client, audio_path, status_box):
-    status_box.update(label="1/4 AI အသံစကားပြော ဖတ်ယူပြီး မြန်မာပြန်ဆိုနေသည်...", state="running")
-    uploaded = client.files.upload(file=str(audio_path))
-    
-    # Upload Complete ဖြစ်စေရန် အချိန်ခဏပေးခြင်း
-    time.sleep(3)
+    status_box.update(label="1/4 AI သို့ Audio Upload တင်နေသည်...", state="running")
+    audio_file = client.files.upload(file=str(audio_path))
+
+    # Gemini Server မှ Audio Processing ပြီးစီးသည်အထိ စောင့်ဆိုင်းခြင်း
+    status_box.update(label="AI မှ Audio ကို Processing လုပ်နေသည်...", state="running")
+    while audio_file.state.name == "PROCESSING":
+        time.sleep(2)
+        audio_file = client.files.get(name=audio_file.name)
+
+    if audio_file.state.name == "FAILED":
+        raise RuntimeError("Gemini API သို့ Audio တင်ရာတွင် အဆင်မပြေပါ၊ မူရင်း Audio ဖိုင် ပျက်စီးနေနိုင်ပါသည်။")
+
     total_dur = duration(audio_path)
 
     prompt = f"""
 You are an expert movie dubbing assistant.
-Listen to the audio (duration: {total_dur:.2f}s).
-Transcribe EVERY spoken dialogue and translate it into natural spoken Burmese.
+Listen to the audio file completely (duration: {total_dur:.2f} seconds).
+Transcribe EVERY spoken sentence/dialogue and translate it into natural spoken Burmese for movie dubbing.
 
-Output format MUST be a plain JSON array of objects with keys "start", "end", "burmese".
-Timestamps must be numbers in seconds.
+Output format MUST be strictly a JSON array of objects with keys "start", "end", "burmese".
+Timestamps ("start" and "end") MUST be numbers in seconds.
 
-Example Output:
+Example Output Format:
 [
   {{"start": 0.5, "end": 2.5, "burmese": "မင်္ဂလာပါ ခင်ဗျာ"}}
 ]
@@ -92,7 +99,7 @@ Example Output:
         try:
             resp = client.models.generate_content(
                 model=model_name,
-                contents=[uploaded, prompt],
+                contents=[audio_file, prompt],
                 config=types.GenerateContentConfig(
                     temperature=0.1,
                     response_mime_type="application/json"
@@ -100,7 +107,7 @@ Example Output:
             )
             raw_text = getattr(resp, "text", "").strip()
             
-            # Clean JSON formatting
+            # JSON Formatting Cleanup
             raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.I)
             raw_text = re.sub(r"\s*```$", "", raw_text)
             
@@ -257,7 +264,7 @@ if start:
                 extract_audio(input_video, orig_audio)
 
                 segments, used_model, total_dur = analyze_audio_full(get_client(), orig_audio, status_box)
-                st.write(f"✅ AI Model: **{used_model}** | Dialogue စာကြောင်းရေ: **{len(segments)} လိုင်း** ဖတ်ရှုပြီးပါပြီ။")
+                st.write(f"✅ AI Model: **{used_model}** | Dialogue စာကြောင်းရေ: **{len(segments)} လိုင်း**")
 
                 burmese_audio = build_final_audio(segments, VOICES[voice_name], total_dur, work_dir, status_box)
 
