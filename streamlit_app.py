@@ -79,37 +79,46 @@ def clean_json(text):
     return text
 
 
-def split_audio_chunks(audio_path, chunk_length=15.0):
+def normalize_segments(items, max_dur):
+    out = []
+    if not isinstance(items, list):
+        return out
+
+    for x in items:
+        if not isinstance(x, dict):
+            continue
+        try:
+            s, e = float(x.get("start", 0)), float(x.get("end", 0))
+        except Exception:
+            continue
+        t = str(x.get("burmese", "")).strip()
+        s, e = max(0, min(s, max_dur)), max(0, min(e, max_dur))
+
+        if t and e - s >= 0.1:
+            out.append({"start": s, "end": e, "burmese": t})
+
+    out.sort(key=lambda x: x["start"])
+    return out
+
+
+def analyze_audio_full(client, audio_path, status_box):
+    status_box.update(label="AI ဘာသာပြန်ဆိုနေသည်...", state="running")
+    uploaded = client.files.upload(file=str(audio_path))
+    time.sleep(2)
+
     total_dur = duration(audio_path)
-    chunks = []
-    start = 0.0
-    idx = 0
-    work_dir = audio_path.parent
 
-    while start < total_dur:
-        end = min(start + chunk_length, total_dur)
-        chunk_file = work_dir / f"chunk_{idx:03d}.wav"
-        run_cmd([
-            FFMPEG, "-y", "-hide_banner", "-loglevel", "error",
-            "-ss", f"{start:.3f}", "-i", str(audio_path),
-            "-t", f"{(end - start):.3f}", "-c:a", "pcm_s16le", str(chunk_file)
-        ], 120)
-        chunks.append((start, end - start, chunk_file))
-        start += chunk_length
-        idx += 1
-    return chunks, total_dur
+    prompt = f"""
+Listen to the ENTIRE audio (total duration: {total_dur:.2f} seconds).
+Transcribe EVERY spoken word. Do NOT summarize or skip dialogue.
+Translate into natural spoken Burmese for video dubbing.
 
-
-def analyze_chunk(client, chunk_file, offset, chunk_dur):
-    uploaded = client.files.upload(file=str(chunk_file))
-    time.sleep(1)
-
-    prompt = """
-Listen to the spoken audio and translate every sentence into natural spoken Burmese for video dubbing.
-Output MUST be a valid JSON array of strings containing the Burmese translations.
-Example: ["မင်္ဂလာပါ", "ဘယ်သူလဲ"]
-If there is no spoken speech, return an empty array [].
+Return strictly a JSON array of objects with accurate timestamps in seconds:
+[
+  {{"start": 0.5, "end": 2.5, "burmese": "မြန်မာစာသား"}}
+]
 """
+
     for model in MODELS:
         try:
             resp = client.models.generate_content(
@@ -124,48 +133,13 @@ If there is no spoken speech, return an empty array [].
             if not raw_text:
                 continue
             raw_json = json.loads(clean_json(raw_text))
-            
-            lines = []
-            if isinstance(raw_json, list):
-                for item in raw_json:
-                    if isinstance(item, str) and item.strip():
-                        lines.append(item.strip())
-                    elif isinstance(item, dict):
-                        # Any string value found in dict
-                        val = next((v for v in item.values() if isinstance(v, str) and v.strip()), None)
-                        if val:
-                            lines.append(val.strip())
-
-            if lines:
-                slot_time = chunk_dur / len(lines)
-                segs = []
-                for i, text in enumerate(lines):
-                    segs.append({
-                        "start": offset + (i * slot_time),
-                        "end": offset + ((i + 1) * slot_time),
-                        "burmese": text
-                    })
-                return segs, model
+            segments = normalize_segments(raw_json, total_dur)
+            if segments:
+                return segments, model, total_dur
         except Exception:
             continue
-    return [], MODELS[0]
 
-
-def analyze_audio_full(client, audio_path, status_box):
-    chunks, total_dur = split_audio_chunks(audio_path, chunk_length=15.0)
-    all_segments = []
-    used_model = MODELS[0]
-
-    for idx, (offset, chunk_dur, chunk_file) in enumerate(chunks, start=1):
-        status_box.update(label=f"AI dialogue ဖတ်နေသည် Chunk ({idx}/{len(chunks)})...", state="running")
-        segs, m = analyze_chunk(client, chunk_file, offset, chunk_dur)
-        used_model = m
-        all_segments.extend(segs)
-
-    if not all_segments:
-        raise RuntimeError("Video ထဲတွင် စကားပြော မတွေ့ရှိပါ။ သို့မဟုတ် Gemini API မှ စကားပြော ဖတ်ယူ၍ မရပါ။")
-
-    return all_segments, used_model, total_dur
+    raise RuntimeError("Video ထဲမှ စကားပြော Dialogue များ ဖတ်ယူ၍ မရပါ။")
 
 
 async def tts_async(text, voice, out):
@@ -207,7 +181,7 @@ def fit_tts_audio(src, out, slot_duration):
     ], 180)
 
 
-def build_final_audio(segments, voice, total_dur, orig_audio, work_dir, status_box):
+def build_final_audio(segments, voice, total_dur, work_dir, status_box):
     tts_files = []
     total = len(segments)
 
@@ -222,6 +196,7 @@ def build_final_audio(segments, voice, total_dur, orig_audio, work_dir, status_b
 
     status_box.update(label="မြန်မာ Audio များကို ပေါင်းစပ်နေသည်...", state="running")
 
+    # မူရင်း တရုတ်အသံကို လုံးဝ မပါစေဘဲ မြန်မာအသံ သီးသန့် ရောစပ်ခြင်း
     cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error"]
     for _, f in tts_files:
         cmd += ["-i", str(f)]
@@ -272,7 +247,7 @@ def merge_video_audio(video_path, audio_path, output_path):
 
 
 st.title("🎬 Movie Dubbing AI")
-st.caption("Video တင်ပါ → Absolute Chunk AI dialogue ဖတ်ရှုမည် → မြန်မာ အသံထပ်ပေးမည်")
+st.caption("Video တင်ပါ → Gemini AI dialogue ဖတ်ရှုမည် → မြန်မာ အသံထပ်ပေးမည်")
 
 if "final_bytes" not in st.session_state:
     st.session_state.final_bytes = None
@@ -299,9 +274,9 @@ if start:
                 extract_audio(input_video, orig_audio)
 
                 segments, used_model, total_dur = analyze_audio_full(get_client(), orig_audio, status_box)
-                st.write(f"✅ AI Model: **{used_model}** | Dialogue စာကြောင်းရေ: **{len(segments)} လိုင်း** (အစမှ အဆုံး အပြည့်အဝ ဖတ်ပြီး)")
+                st.write(f"✅ AI Model: **{used_model}** | Dialogue စာကြောင်းရေ: **{len(segments)} လိုင်း**")
 
-                burmese_audio = build_final_audio(segments, VOICES[voice_name], total_dur, orig_audio, work_dir, status_box)
+                burmese_audio = build_final_audio(segments, VOICES[voice_name], total_dur, work_dir, status_box)
 
                 status_box.update(label="4/4 Video နှင့် Audio ပေါင်းစပ်နေသည်...", state="running")
                 final_video = work_dir / "final_output.mp4"
