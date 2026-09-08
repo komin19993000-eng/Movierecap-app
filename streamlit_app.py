@@ -27,13 +27,13 @@ VOICES = {
     "နီလာ (အမျိုးသမီး)": "my-MM-NilarNeural",
 }
 
+# Traffic နည်းပြီး Stable ဖြစ်သော Model Candidate များ
 MODELS = [
-    "gemini-3.8-flash",
-    "gemini-3.7-flash",
-    "gemini-3.6-flash",
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash",
     "gemini-3.5-flash",
-    "gemini-3.5-flash-lite",
-    "gemini-3.1-flash-lite",
+    "gemini-3.6-flash",
 ]
 
 TEMP_WORDS = (
@@ -420,7 +420,6 @@ Format:
     )
 
 
-
 async def tts_async(text, voice, out):
     communicate = edge_tts.Communicate(
         text=str(text).strip(),
@@ -438,8 +437,6 @@ def tts(text, voice, out):
             "TTS text အလွတ်ဖြစ်နေပါသည်။"
         )
 
-    # ရွေးထားတဲ့ voice ကို အရင်သုံးမယ်။
-    # မအောင်မြင်ရင် အခြား Burmese voice ကို fallback လုပ်မယ်။
     voices = [
         voice
     ] + [
@@ -489,8 +486,6 @@ def tts(text, voice, out):
                     except Exception:
                         pass
 
-                # Edge TTS temporary error
-                # ဖြစ်ရင် ပြန်စမ်းမယ်
                 if attempt < 2:
                     time.sleep(
                         2 + attempt * 2
@@ -500,6 +495,7 @@ def tts(text, voice, out):
         "Edge TTS က audio မပြန်ပေးနိုင်ပါ။\n"
         + "\n".join(errors[-8:])
     )
+
 
 def atempo_filter(speed):
 
@@ -548,10 +544,12 @@ def fit_tts(src, out, slot):
             str(src),
             "-filter:a",
             atempo_filter(speed),
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
             "-c:a",
-            "aac",
-            "-b:a",
-            "160k",
+            "pcm_s16le",
             str(out)
         ],
         180
@@ -600,6 +598,26 @@ def make_burmese_audio(
     files = []
     total = len(segments)
 
+    # 1. တိတ်ဆိတ်သော Base track ဖန်တီးပါ
+    base_silence = work / "base_silence.wav"
+    run_cmd(
+        [
+            FFMPEG,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            f"anullsrc=r=48000:cl=stereo:d={dur:.3f}",
+            "-c:a",
+            "pcm_s16le",
+            str(base_silence)
+        ],
+        120
+    )
+
     for i, s in enumerate(
         segments,
         1
@@ -618,7 +636,7 @@ def make_burmese_audio(
 
         fitted = (
             work
-            / f"fit_{i:04d}.m4a"
+            / f"fit_{i:04d}.wav"
         )
 
         tts(
@@ -648,12 +666,15 @@ def make_burmese_audio(
             "Burmese dialogue မရှိပါ။"
         )
 
+    # 2. Base Silence ပါဝင်သော inputs စာရင်း
     cmd = [
         FFMPEG,
         "-y",
         "-hide_banner",
         "-loglevel",
-        "error"
+        "error",
+        "-i",
+        str(base_silence)
     ]
 
     for _, f in files:
@@ -662,35 +683,27 @@ def make_burmese_audio(
             str(f)
         ]
 
-    filters = []
-    labels = []
+    filters = [
+        "[0:a]aformat=sample_rates=48000:channel_layouts=stereo[a0]"
+    ]
+    labels = ["[a0]"]
 
-    for i, (start, _) in enumerate(files):
-
-        ms = int(
-            round(start * 1000)
-        )
-
+    # 3. Audio delay နှင့် format filtering
+    for i, (start, _) in enumerate(files, start=1):
+        ms = int(round(start * 1000))
         label = f"a{i}"
 
         filters.append(
             f"[{i}:a]"
-            f"aresample=48000,"
-            f"adelay={ms}|{ms},"
-            f"apad[{label}]"
+            f"aformat=sample_rates=48000:channel_layouts=stereo,"
+            f"adelay={ms}|{ms}[{label}]"
         )
+        labels.append(f"[{label}]")
 
-        labels.append(
-            f"[{label}]"
-        )
-
+    # 4. normalize=0 ပါဝင်သော amix filter ဖြင့် merge လုပ်ပါ (အသံမတိုး/မပျောက်စေရန်)
     filters.append(
         "".join(labels)
-        + f"amix="
-          f"inputs={len(labels)}:"
-          f"duration=longest:"
-          f"dropout_transition=0"
-          f"[mix]"
+        + f"amix=inputs={len(labels)}:duration=first:dropout_transition=0:normalize=0[mix]"
     )
 
     out = (
@@ -703,12 +716,10 @@ def make_burmese_audio(
         ";".join(filters),
         "-map",
         "[mix]",
-        "-t",
-        f"{dur:.3f}",
         "-c:a",
         "aac",
         "-b:a",
-        "160k",
+        "192k",
         "-ar",
         "48000",
         "-ac",
@@ -844,7 +855,7 @@ def export_video(
             "aac",
 
             "-b:a",
-            "160k",
+            "192k",
 
             "-ar",
             "48000",
@@ -852,8 +863,7 @@ def export_video(
             "-ac",
             "2",
 
-            "-t",
-            f"{d:.3f}",
+            "-shortest",
 
             "-movflags",
             "+faststart",
@@ -901,7 +911,7 @@ def export_video(
                 "aac",
 
                 "-b:a",
-                "160k",
+                "192k",
 
                 "-ar",
                 "48000",
@@ -909,8 +919,7 @@ def export_video(
                 "-ac",
                 "2",
 
-                "-t",
-                f"{d:.3f}",
+                "-shortest",
 
                 "-movflags",
                 "+faststart",
