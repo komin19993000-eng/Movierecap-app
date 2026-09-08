@@ -6,6 +6,7 @@ import asyncio
 import subprocess
 import tempfile
 from pathlib import Path
+from pydantic import BaseModel, Field
 
 import streamlit as st
 from google import genai
@@ -26,10 +27,20 @@ VOICES = {
     "နီလာ (အမျိုးသမီး)": "my-MM-NilarNeural",
 }
 
+# Stable Flash Models
 MODELS = [
-    "gemini-3.6-flash",
-    "gemini-3.5-flash",
+    "gemini-2.5-flash",
+    "gemini-1.5-flash",
 ]
+
+# Strict Structured Output Schema
+class DialogueSegment(BaseModel):
+    start: float = Field(description="Start time in seconds")
+    end: float = Field(description="End time in seconds")
+    burmese: str = Field(description="Burmese translation of spoken text")
+
+class DubbingResponse(BaseModel):
+    segments: list[DialogueSegment]
 
 
 def run_cmd(args, timeout=1800):
@@ -69,77 +80,52 @@ def get_client():
     return genai.Client(api_key=key)
 
 
-def clean_json(text):
-    text = (text or "").strip()
-    text = re.sub(r"^```(?:json)?\s*", "", text, flags=re.I)
-    text = re.sub(r"\s*```$", "", text)
-    a, b = text.find("["), text.rfind("]")
-    if a >= 0 and b > a:
-        return text[a:b + 1]
-    return text
-
-
-def normalize_segments(items, max_dur):
-    out = []
-    if not isinstance(items, list):
-        return out
-
-    for x in items:
-        if not isinstance(x, dict):
-            continue
-        try:
-            s, e = float(x.get("start", 0)), float(x.get("end", 0))
-        except Exception:
-            continue
-        t = str(x.get("burmese", "")).strip()
-        s, e = max(0, min(s, max_dur)), max(0, min(e, max_dur))
-
-        if t and e - s >= 0.1:
-            out.append({"start": s, "end": e, "burmese": t})
-
-    out.sort(key=lambda x: x["start"])
-    return out
-
-
 def analyze_audio_full(client, audio_path, status_box):
     status_box.update(label="AI ဘာသာပြန်ဆိုနေသည်...", state="running")
     uploaded = client.files.upload(file=str(audio_path))
-    time.sleep(2)
+    
+    # Audio Upload Process အချိန်ပေးခြင်း
+    time.sleep(3)
 
     total_dur = duration(audio_path)
 
     prompt = f"""
-Listen to the ENTIRE audio (total duration: {total_dur:.2f} seconds).
-Transcribe EVERY spoken word. Do NOT summarize or skip dialogue.
-Translate into natural spoken Burmese for video dubbing.
-
-Return strictly a JSON array of objects with accurate timestamps in seconds:
-[
-  {{"start": 0.5, "end": 2.5, "burmese": "မြန်မာစာသား"}}
-]
+Listen to the audio file (total duration: {total_dur:.2f} seconds).
+Transcribe all spoken dialogues and translate them into natural spoken Burmese for movie dubbing.
+Provide accurate start and end timestamps in seconds.
 """
 
     for model in MODELS:
         try:
             resp = client.models.generate_content(
                 model=model,
-                contents=[types.Part.from_uri(file_uri=uploaded.uri, mime_type="audio/wav"), prompt],
+                contents=[uploaded, prompt],
                 config=types.GenerateContentConfig(
                     temperature=0.1,
-                    response_mime_type="application/json"
+                    response_mime_type="application/json",
+                    response_schema=DubbingResponse,
                 )
             )
-            raw_text = getattr(resp, "text", "")
-            if not raw_text:
-                continue
-            raw_json = json.loads(clean_json(raw_text))
-            segments = normalize_segments(raw_json, total_dur)
-            if segments:
-                return segments, model, total_dur
+            
+            if resp.parsed and resp.parsed.segments:
+                valid_segments = []
+                for item in resp.parsed.segments:
+                    if item.burmese and item.burmese.strip():
+                        s = max(0.0, min(float(item.start), total_dur))
+                        e = max(s + 0.1, min(float(item.end), total_dur))
+                        valid_segments.append({
+                            "start": s,
+                            "end": e,
+                            "burmese": item.burmese.strip()
+                        })
+                
+                if valid_segments:
+                    valid_segments.sort(key=lambda x: x["start"])
+                    return valid_segments, model, total_dur
         except Exception:
             continue
 
-    raise RuntimeError("Video ထဲမှ စကားပြော Dialogue များ ဖတ်ယူ၍ မရပါ။")
+    raise RuntimeError("Gemini API မှ စကားပြော ဖတ်ယူ၍ မရပါ။ API Key သို့မဟုတ် Video ဖိုင်၏ အသံကို စစ်ဆေးပါ။")
 
 
 async def tts_async(text, voice, out):
@@ -196,7 +182,6 @@ def build_final_audio(segments, voice, total_dur, work_dir, status_box):
 
     status_box.update(label="မြန်မာ Audio များကို ပေါင်းစပ်နေသည်...", state="running")
 
-    # မူရင်း တရုတ်အသံကို လုံးဝ မပါစေဘဲ မြန်မာအသံ သီးသန့် ရောစပ်ခြင်း
     cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error"]
     for _, f in tts_files:
         cmd += ["-i", str(f)]
