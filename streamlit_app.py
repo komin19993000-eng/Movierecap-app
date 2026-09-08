@@ -79,28 +79,6 @@ def clean_json(text):
     return text
 
 
-def normalize_segments(items, max_dur):
-    out = []
-    if not isinstance(items, list):
-        return out
-
-    for x in items:
-        if not isinstance(x, dict):
-            continue
-        try:
-            s, e = float(x.get("start", 0)), float(x.get("end", 0))
-        except Exception:
-            continue
-        t = str(x.get("burmese", "")).strip()
-        s, e = max(0, min(s, max_dur)), max(0, min(e, max_dur))
-
-        if t and e - s >= 0.1:
-            out.append({"start": s, "end": e, "burmese": t})
-
-    out.sort(key=lambda x: x["start"])
-    return out
-
-
 def split_audio_chunks(audio_path, chunk_length=15.0):
     total_dur = duration(audio_path)
     chunks = []
@@ -127,13 +105,12 @@ def analyze_chunk(client, chunk_file, offset, chunk_dur):
     time.sleep(1)
 
     prompt = f"""
-Transcribe EVERY SINGLE spoken word in this audio snippet (duration: {chunk_dur:.2f}s).
-Do NOT summarize. Do NOT skip any word.
-Translate into natural Burmese for dubbing.
+Transcribe EVERY spoken sentence in this audio snippet (duration: {chunk_dur:.2f}s).
+Do NOT summarize. Translate each sentence into natural spoken Burmese for video dubbing.
 
-Return strictly a JSON array of objects:
+Return strictly a JSON array of objects with the key "burmese":
 [
-  {{"start": 0.1, "end": 2.5, "burmese": "မြန်မာစာသား"}}
+  {{"burmese": "မြန်မာစာသား"}}
 ]
 """
     for model in MODELS:
@@ -150,11 +127,24 @@ Return strictly a JSON array of objects:
             if not raw_text:
                 continue
             raw_json = json.loads(clean_json(raw_text))
-            segments = normalize_segments(raw_json, chunk_dur)
-            for s in segments:
-                s["start"] += offset
-                s["end"] += offset
-            return segments, model
+            
+            lines = []
+            if isinstance(raw_json, list):
+                for item in raw_json:
+                    if isinstance(item, dict) and item.get("burmese"):
+                        lines.append(str(item["burmese"]).strip())
+
+            if lines:
+                # တွေ့ရှိသမျှ စကားပြောများကို Chunk အတွင်း အလိုက်သင့် အချိန်ခွဲဝေပေးခြင်း
+                slot_time = chunk_dur / len(lines)
+                segs = []
+                for i, text in enumerate(lines):
+                    segs.append({
+                        "start": offset + (i * slot_time),
+                        "end": offset + ((i + 1) * slot_time),
+                        "burmese": text
+                    })
+                return segs, model
         except Exception:
             continue
     return [], MODELS[0]
@@ -171,7 +161,6 @@ def analyze_audio_full(client, audio_path, status_box):
         used_model = m
         all_segments.extend(segs)
 
-    all_segments = normalize_segments(all_segments, total_dur)
     if not all_segments:
         raise RuntimeError("Video ထဲမှ စကားပြော Dialogue များ ဖတ်ယူ၍ မရပါ။")
 
@@ -232,7 +221,6 @@ def build_final_audio(segments, voice, total_dur, orig_audio, work_dir, status_b
 
     status_box.update(label="မြန်မာ Audio များကို ပေါင်းစပ်နေသည်...", state="running")
 
-    # မူရင်း တရုတ်အသံအား လုံးဝ မပါအောင် ဖြုတ်ပြီး မြန်မာအသံ သီးသန့် ပေါင်းစပ်ခြင်း
     cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error"]
     for _, f in tts_files:
         cmd += ["-i", str(f)]
@@ -283,7 +271,7 @@ def merge_video_audio(video_path, audio_path, output_path):
 
 
 st.title("🎬 Movie Dubbing AI")
-st.caption("Video တင်ပါ → Chunk-based AI dialogue ဖတ်ရှုမည် → မြန်မာ အသံထပ်ပေးမည်")
+st.caption("Video တင်ပါ → Absolute Chunk AI dialogue ဖတ်ရှုမည် → မြန်မာ အသံထပ်ပေးမည်")
 
 if "final_bytes" not in st.session_state:
     st.session_state.final_bytes = None
@@ -310,7 +298,7 @@ if start:
                 extract_audio(input_video, orig_audio)
 
                 segments, used_model, total_dur = analyze_audio_full(get_client(), orig_audio, status_box)
-                st.write(f"✅ AI Model: **{used_model}** | Dialogue စာကြောင်းရေ: **{len(segments)} လိုင်း** (အပြည့်အဝ ဖတ်ပြီး)")
+                st.write(f"✅ AI Model: **{used_model}** | Dialogue စာကြောင်းရေ: **{len(segments)} လိုင်း** (အစမှ အဆုံး အပြည့်အဝ ဖတ်ပြီး)")
 
                 burmese_audio = build_final_audio(segments, VOICES[voice_name], total_dur, orig_audio, work_dir, status_box)
 
