@@ -2,5 +2,3 @@ streamlit
 google-genai
 edge-tts
 imageio-ffmpeg
-openai-whisper
-torch
