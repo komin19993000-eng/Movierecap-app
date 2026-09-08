@@ -420,34 +420,86 @@ Format:
     )
 
 
-async def tts_async(text, voice, out):
 
-    await edge_tts.Communicate(
-        text=text,
-        voice=voice,
-        rate="+0%",
-        volume="+0%"
-    ).save(str(out))
+async def tts_async(text, voice, out):
+    communicate = edge_tts.Communicate(
+        text=str(text).strip(),
+        voice=voice
+    )
+
+    await communicate.save(str(out))
 
 
 def tts(text, voice, out):
+    text = str(text).strip()
 
-    asyncio.run(
-        tts_async(
-            text,
-            voice,
-            out
-        )
-    )
-
-    if (
-        not out.exists()
-        or out.stat().st_size < 1000
-    ):
+    if not text:
         raise RuntimeError(
-            "TTS file မထွက်ပါ။"
+            "TTS text အလွတ်ဖြစ်နေပါသည်။"
         )
 
+    # ရွေးထားတဲ့ voice ကို အရင်သုံးမယ်။
+    # မအောင်မြင်ရင် အခြား Burmese voice ကို fallback လုပ်မယ်။
+    voices = [
+        voice
+    ] + [
+        v for v in VOICES.values()
+        if v != voice
+    ]
+
+    errors = []
+
+    for selected_voice in voices:
+
+        for attempt in range(3):
+
+            try:
+
+                if out.exists():
+                    out.unlink()
+
+                asyncio.run(
+                    tts_async(
+                        text,
+                        selected_voice,
+                        out
+                    )
+                )
+
+                if (
+                    out.exists()
+                    and out.stat().st_size >= 1000
+                ):
+                    return selected_voice
+
+                raise RuntimeError(
+                    "TTS audio file အလွတ်ဖြစ်နေပါသည်။"
+                )
+
+            except Exception as e:
+
+                errors.append(
+                    f"{selected_voice} "
+                    f"attempt {attempt + 1}: {e}"
+                )
+
+                if out.exists():
+                    try:
+                        out.unlink()
+                    except Exception:
+                        pass
+
+                # Edge TTS temporary error
+                # ဖြစ်ရင် ပြန်စမ်းမယ်
+                if attempt < 2:
+                    time.sleep(
+                        2 + attempt * 2
+                    )
+
+    raise RuntimeError(
+        "Edge TTS က audio မပြန်ပေးနိုင်ပါ။\n"
+        + "\n".join(errors[-8:])
+    )
 
 def atempo_filter(speed):
 
