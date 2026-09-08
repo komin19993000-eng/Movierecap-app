@@ -4,8 +4,8 @@ import json
 import time
 import asyncio
 import random
-import tempfile
 import subprocess
+import tempfile
 from pathlib import Path
 
 import streamlit as st
@@ -14,34 +14,20 @@ from google.genai import types
 import edge_tts
 import imageio_ffmpeg
 
-
-# ============================================================
-# PAGE
-# ============================================================
-
 st.set_page_config(
     page_title="Movie Dubbing AI",
     page_icon="🎬",
-    layout="wide",
+    layout="wide"
 )
 
-st.title("🎬 Movie Dubbing AI")
-st.caption(
-    "Video → AI Dialogue → Burmese Translation → "
-    "Burmese Voice → Preview → Download"
-)
+FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 
-
-# ============================================================
-# SETTINGS
-# ============================================================
-
-VOICE_MAP = {
+VOICES = {
     "သီဟ (အမျိုးသား)": "my-MM-ThihaNeural",
     "နီလာ (အမျိုးသမီး)": "my-MM-NilarNeural",
 }
 
-MODEL_CANDIDATES = [
+MODELS = [
     "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-3.6-flash",
@@ -50,76 +36,54 @@ MODEL_CANDIDATES = [
     "gemini-3.1-flash-lite",
 ]
 
-TEMP_ERRORS = (
+TEMP_WORDS = (
     "503",
     "500",
     "502",
     "504",
     "429",
     "timeout",
-    "timed out",
     "unavailable",
     "overloaded",
     "high demand",
-    "temporarily",
-    "resource exhausted",
+    "resource exhausted"
 )
 
 
-# ============================================================
-# FFMPEG
-# ============================================================
-
-FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
-
-
-def run_command(command, timeout=600):
+def run_cmd(args, timeout=1800):
     return subprocess.run(
-        command,
+        args,
         stdout=subprocess.PIPE,
         stderr=subprocess.PIPE,
         text=True,
         check=False,
-        timeout=timeout,
+        timeout=timeout
     )
 
 
-def get_duration(file_path):
-    result = run_command(
-        [
-            FFMPEG,
-            "-hide_banner",
-            "-i",
-            str(file_path),
-        ],
-        timeout=120,
+def duration(path):
+    r = run_cmd(
+        [FFMPEG, "-hide_banner", "-i", str(path)],
+        120
     )
 
-    text = result.stderr or ""
-
-    match = re.search(
+    m = re.search(
         r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)",
-        text,
+        r.stderr or ""
     )
 
-    if not match:
-        raise RuntimeError(
-            "Video duration ကို ဖတ်မရပါ။"
-        )
-
-    hours = int(match.group(1))
-    minutes = int(match.group(2))
-    seconds = float(match.group(3))
+    if not m:
+        raise RuntimeError("Video/audio duration ကို ဖတ်မရပါ။")
 
     return (
-        hours * 3600
-        + minutes * 60
-        + seconds
+        int(m.group(1)) * 3600
+        + int(m.group(2)) * 60
+        + float(m.group(3))
     )
 
 
-def extract_audio(video_path, audio_path):
-    result = run_command(
+def extract_audio(video, out):
+    r = run_cmd(
         [
             FFMPEG,
             "-y",
@@ -127,7 +91,7 @@ def extract_audio(video_path, audio_path):
             "-loglevel",
             "error",
             "-i",
-            str(video_path),
+            str(video),
             "-vn",
             "-ac",
             "1",
@@ -135,336 +99,230 @@ def extract_audio(video_path, audio_path):
             "16000",
             "-c:a",
             "pcm_s16le",
-            str(audio_path),
+            str(out)
         ],
-        timeout=900,
+        900
     )
 
-    if result.returncode != 0:
+    if (
+        r.returncode
+        or not out.exists()
+        or out.stat().st_size < 1000
+    ):
         raise RuntimeError(
-            "Original audio ထုတ်မရပါ။\n\n"
-            + (result.stderr or "")
+            "Original audio ထုတ်မရပါ။\n"
+            + (r.stderr or "")
         )
 
-    if not audio_path.exists():
-        raise RuntimeError(
-            "Audio file မထွက်လာပါ။"
-        )
-
-    if audio_path.stat().st_size < 1000:
-        raise RuntimeError(
-            "Extracted audio file က အလွတ်ဖြစ်နေပါတယ်။"
-        )
-
-
-# ============================================================
-# GEMINI
-# ============================================================
 
 @st.cache_resource
-def get_client():
-    try:
-        api_key = st.secrets["GEMINI_API_KEY"]
-    except Exception:
-        api_key = os.environ.get(
-            "GEMINI_API_KEY",
-            "",
-        )
+def client():
+    key = st.secrets.get(
+        "GEMINI_API_KEY",
+        os.getenv("GEMINI_API_KEY", "")
+    )
 
-    if not api_key:
+    if not key:
         raise RuntimeError(
             "GEMINI_API_KEY မတွေ့ပါ။ "
             "Streamlit Secrets ထဲမှာ ထည့်ပါ။"
         )
 
-    return genai.Client(
-        api_key=api_key
-    )
+    return genai.Client(api_key=key)
 
 
-def is_temporary_error(error):
-    text = str(error).lower()
-
+def temporary_error(e):
+    s = str(e).lower()
     return any(
-        word.lower() in text
-        for word in TEMP_ERRORS
+        x.lower() in s
+        for x in TEMP_WORDS
     )
 
 
-def get_available_models(client):
+def model_list(c):
     try:
-        models = client.models.list()
+        names = []
 
-        result = []
+        for m in c.models.list():
+            n = getattr(m, "name", "")
 
-        for model in models:
-            name = getattr(
-                model,
-                "name",
-                "",
-            )
-
-            if name:
-                result.append(
-                    name.replace(
-                        "models/",
-                        "",
-                    )
+            if n:
+                names.append(
+                    n.replace("models/", "")
                 )
 
-        return result
+        usable = [
+            m for m in MODELS
+            if m in names
+        ]
+
+        return usable or MODELS
 
     except Exception:
-        return []
-
-
-def select_models(client):
-    available = get_available_models(
-        client
-    )
-
-    if not available:
-        return MODEL_CANDIDATES.copy()
-
-    selected = [
-        model
-        for model in MODEL_CANDIDATES
-        if model in available
-    ]
-
-    return (
-        selected
-        if selected
-        else MODEL_CANDIDATES.copy()
-    )
-
-
-def wait_for_uploaded_file(
-    client,
-    uploaded,
-):
-    name = getattr(
-        uploaded,
-        "name",
-        None,
-    )
-
-    if not name:
-        return uploaded
-
-    for _ in range(90):
-
-        try:
-            current = client.files.get(
-                name=name
-            )
-
-            state = getattr(
-                current,
-                "state",
-                None,
-            )
-
-            state_name = str(
-                getattr(
-                    state,
-                    "name",
-                    state,
-                )
-            ).upper()
-
-            if "PROCESSING" not in state_name:
-                return current
-
-            time.sleep(2)
-
-        except Exception:
-            return uploaded
-
-    return uploaded
+        return MODELS
 
 
 def clean_json(text):
-    text = text.strip()
+    text = (text or "").strip()
 
-    if text.startswith("```"):
-        text = re.sub(
-            r"^```(?:json)?\s*",
-            "",
-            text,
-            flags=re.I,
-        )
+    text = re.sub(
+        r"^```(?:json)?\s*",
+        "",
+        text,
+        flags=re.I
+    )
 
-        text = re.sub(
-            r"\s*```$",
-            "",
-            text,
-        )
+    text = re.sub(
+        r"\s*```$",
+        "",
+        text
+    )
 
-    start = text.find("[")
-    end = text.rfind("]")
+    a = text.find("[")
+    b = text.rfind("]")
 
-    if start >= 0 and end > start:
-        text = text[
-            start:end + 1
-        ]
+    if a >= 0 and b > a:
+        return text[a:b + 1]
 
     return text
 
 
-def normalize_segments(
-    data,
-    duration,
-):
-    if not isinstance(data, list):
+def normalize(items, dur):
+    out = []
+
+    if not isinstance(items, list):
         raise RuntimeError(
-            "Gemini response က JSON list မဟုတ်ပါ။"
+            "AI response က JSON list မဟုတ်ပါ။"
         )
 
-    segments = []
+    for x in items:
 
-    for item in data:
-
-        if not isinstance(
-            item,
-            dict,
-        ):
+        if not isinstance(x, dict):
             continue
 
         try:
-            start = float(
-                item.get(
-                    "start",
-                    0,
-                )
-            )
-
-            end = float(
-                item.get(
-                    "end",
-                    0,
-                )
-            )
-
+            s = float(x.get("start", 0))
+            e = float(x.get("end", 0))
         except Exception:
             continue
 
-        text = str(
-            item.get(
-                "burmese",
-                "",
-            )
+        t = str(
+            x.get("burmese", "")
         ).strip()
 
-        if not text:
-            continue
+        s = max(0, min(s, dur))
+        e = max(0, min(e, dur))
 
-        start = max(
-            0,
-            min(start, duration),
-        )
+        if t and e - s >= 0.20:
+            out.append(
+                {
+                    "start": s,
+                    "end": e,
+                    "burmese": t
+                }
+            )
 
-        end = max(
-            0,
-            min(end, duration),
-        )
-
-        if end <= start:
-            continue
-
-        if end - start < 0.20:
-            continue
-
-        segments.append(
-            {
-                "start": start,
-                "end": end,
-                "burmese": text,
-            }
-        )
-
-    segments.sort(
+    out.sort(
         key=lambda x: x["start"]
     )
 
-    # Duplicate dialogue removal
     cleaned = []
 
-    for segment in segments:
+    for x in out:
 
-        if cleaned:
-
-            previous = cleaned[-1]
-
-            if (
-                abs(
-                    segment["start"]
-                    - previous["start"]
-                ) < 0.05
-                and
-                segment["burmese"]
-                == previous["burmese"]
-            ):
-                previous["end"] = max(
-                    previous["end"],
-                    segment["end"],
-                )
-                continue
-
-        cleaned.append(segment)
+        if (
+            cleaned
+            and abs(
+                x["start"]
+                - cleaned[-1]["start"]
+            ) < 0.05
+            and x["burmese"]
+            == cleaned[-1]["burmese"]
+        ):
+            cleaned[-1]["end"] = max(
+                cleaned[-1]["end"],
+                x["end"]
+            )
+        else:
+            cleaned.append(x)
 
     return cleaned
 
 
-def analyze_movie_audio(
-    client,
-    audio_path,
-    duration,
-    status_callback,
-):
-    try:
+def wait_file(c, f):
+    name = getattr(f, "name", None)
 
-        uploaded = client.files.upload(
-            file=str(audio_path)
-        )
+    if not name:
+        return f
 
-        uploaded = wait_for_uploaded_file(
-            client,
-            uploaded,
-        )
+    for _ in range(90):
 
-    except Exception as error:
-        raise RuntimeError(
-            "Gemini audio upload မအောင်မြင်ပါ။\n\n"
-            + str(error)
+        try:
+            cur = c.files.get(name=name)
+
+            state = str(
+                getattr(
+                    getattr(cur, "state", None),
+                    "name",
+                    getattr(cur, "state", "")
+                )
+            ).upper()
+
+            if "PROCESSING" not in state:
+                return cur
+
+        except Exception:
+            return f
+
+        time.sleep(2)
+
+    return f
+
+
+def analyze(c, audio, dur, status):
+
+    uploaded = wait_file(
+        c,
+        c.files.upload(
+            file=str(audio)
         )
+    )
 
     prompt = f"""
 You are a professional movie dubbing editor.
 
-Analyze the uploaded movie audio.
+Analyze the uploaded movie audio and find ALL meaningful spoken dialogue.
 
-Find ALL meaningful spoken dialogue.
+Do not invent dialogue.
 
-Requirements:
+Keep chronological order.
 
-1. Detect every meaningful spoken line.
-2. Do not invent dialogue.
-3. Keep chronological order.
-4. Give approximate START and END timestamps in seconds.
-5. Translate into natural conversational Burmese.
-6. Burmese must sound like professional movie dubbing.
-7. Preserve emotion and meaning.
-8. Keep names and relationships correct.
-9. Do not include music or sound effects.
-10. Keep Burmese sentences reasonably concise so they can fit the original timing.
-11. Do not merge unrelated dialogue lines.
-12. Return ONLY valid JSON.
+Return approximate start/end timestamps in seconds.
+
+Translate every line into natural conversational Burmese suitable for professional movie dubbing.
+
+Preserve:
+- meaning
+- emotion
+- names
+- relationships
+- context
+
+Exclude:
+- music
+- sound effects
+- background noise
+
+Keep each Burmese line concise enough to fit its timestamp.
+
+Do not merge unrelated lines.
+
+Return ONLY valid JSON.
 
 Audio duration:
-{duration:.2f} seconds
+{dur:.2f} seconds.
 
-JSON format:
+Format:
 
 [
   {{
@@ -475,237 +333,159 @@ JSON format:
 ]
 """
 
-    models = select_models(
-        client
-    )
-
     errors = []
 
-    for model_name in models:
+    for model in model_list(c):
 
-        status_callback(
-            f"AI model စမ်းနေသည် — {model_name}"
+        status(
+            f"AI model: {model}"
         )
 
         for attempt in range(2):
 
             try:
 
-                response = (
-                    client.models.generate_content(
-                        model=model_name,
-                        contents=[
-                            types.Part.from_uri(
-                                file_uri=uploaded.uri,
-                                mime_type=(
-                                    uploaded.mime_type
-                                    or "audio/wav"
-                                ),
-                            ),
-                            prompt,
-                        ],
-                        config=types.GenerateContentConfig(
-                            temperature=0.15,
+                resp = c.models.generate_content(
+                    model=model,
+                    contents=[
+                        types.Part.from_uri(
+                            file_uri=uploaded.uri,
+                            mime_type=(
+                                getattr(
+                                    uploaded,
+                                    "mime_type",
+                                    None
+                                )
+                                or "audio/wav"
+                            )
                         ),
+                        prompt
+                    ],
+                    config=types.GenerateContentConfig(
+                        temperature=0.15
                     )
                 )
 
-                text = getattr(
-                    response,
-                    "text",
-                    None,
+                seg = normalize(
+                    json.loads(
+                        clean_json(
+                            getattr(
+                                resp,
+                                "text",
+                                ""
+                            )
+                        )
+                    ),
+                    dur
                 )
 
-                if not text:
-                    raise RuntimeError(
-                        "Gemini response မရှိပါ။"
-                    )
+                if seg:
+                    return seg, model
 
-                data = json.loads(
-                    clean_json(text)
+                raise RuntimeError(
+                    "Dialogue မတွေ့ပါ။"
                 )
 
-                segments = normalize_segments(
-                    data,
-                    duration,
-                )
-
-                if not segments:
-                    raise RuntimeError(
-                        "Dialogue မတွေ့ပါ။"
-                    )
-
-                return (
-                    segments,
-                    model_name,
-                )
-
-            except Exception as error:
+            except Exception as e:
 
                 errors.append(
-                    f"{model_name} "
-                    f"attempt {attempt + 1}: "
-                    f"{error}"
+                    f"{model} attempt "
+                    f"{attempt + 1}: {e}"
                 )
 
                 if (
                     attempt == 0
-                    and is_temporary_error(
-                        error
-                    )
+                    and temporary_error(e)
                 ):
 
                     wait = (
                         4
-                        + random.uniform(
-                            0,
-                            2,
-                        )
+                        + random.uniform(0, 2)
                     )
 
-                    status_callback(
-                        f"{model_name} "
-                        f"ခဏအလုပ်များနေသည်။ "
-                        f"{wait:.1f}s နောက် retry..."
+                    status(
+                        f"{model} busy — "
+                        f"{wait:.1f}s retry"
                     )
 
-                    time.sleep(
-                        wait
-                    )
+                    time.sleep(wait)
 
-                    continue
-
-                break
+                else:
+                    break
 
     raise RuntimeError(
         "Gemini model အားလုံးနဲ့ "
-        "dialogue translation မအောင်မြင်ပါ။\n\n"
-        + "\n".join(
-            errors[-8:]
-        )
+        "မအောင်မြင်ပါ။\n"
+        + "\n".join(errors[-8:])
     )
 
 
-# ============================================================
-# TTS
-# ============================================================
+async def tts_async(text, voice, out):
 
-async def generate_tts_async(
-    text,
-    voice,
-    output_path,
-):
-    communicator = edge_tts.Communicate(
+    await edge_tts.Communicate(
         text=text,
         voice=voice,
         rate="+0%",
-        volume="+0%",
-    )
-
-    await communicator.save(
-        str(output_path)
-    )
+        volume="+0%"
+    ).save(str(out))
 
 
-def generate_tts(
-    text,
-    voice,
-    output_path,
-):
+def tts(text, voice, out):
+
     asyncio.run(
-        generate_tts_async(
+        tts_async(
             text,
             voice,
-            output_path,
+            out
         )
     )
 
-    if not output_path.exists():
+    if (
+        not out.exists()
+        or out.stat().st_size < 1000
+    ):
         raise RuntimeError(
-            "TTS file မထွက်လာပါ။"
+            "TTS file မထွက်ပါ။"
         )
 
-    if output_path.stat().st_size < 1000:
-        raise RuntimeError(
-            "TTS file အလွတ်ဖြစ်နေပါတယ်။"
-        )
 
+def atempo_filter(speed):
 
-def get_audio_duration(
-    audio_path
-):
-    return get_duration(
-        audio_path
-    )
-
-
-def build_atempo_filter(
-    speed
-):
     speed = max(
         0.5,
-        min(
-            float(speed),
-            3.0,
-        ),
+        min(float(speed), 3.0)
     )
 
-    filters = []
+    f = []
 
-    while speed > 2.0:
-        filters.append(
-            "atempo=2.0"
-        )
-        speed /= 2.0
+    while speed > 2:
+        f.append("atempo=2")
+        speed /= 2
 
     while speed < 0.5:
-        filters.append(
-            "atempo=0.5"
-        )
+        f.append("atempo=.5")
         speed /= 0.5
 
-    filters.append(
+    f.append(
         f"atempo={speed:.6f}"
     )
 
-    return ",".join(
-        filters
-    )
+    return ",".join(f)
 
 
-def fit_audio_to_slot(
-    input_audio,
-    output_audio,
-    slot_duration,
-):
-    original_duration = (
-        get_audio_duration(
-            input_audio
-        )
-    )
+def fit_tts(src, out, slot):
 
-    if original_duration <= 0:
-        raise RuntimeError(
-            "TTS duration မမှန်ပါ။"
-        )
-
-    speed = (
-        original_duration
-        / max(
-            slot_duration,
-            0.25,
-        )
-    )
+    d = duration(src)
 
     speed = max(
         0.5,
         min(
-            speed,
-            3.0,
-        ),
+            d / max(slot, 0.25),
+            3.0
+        )
     )
 
-    result = run_command(
+    r = run_cmd(
         [
             FFMPEG,
             "-y",
@@ -713,244 +493,279 @@ def fit_audio_to_slot(
             "-loglevel",
             "error",
             "-i",
-            str(input_audio),
+            str(src),
             "-filter:a",
-            build_atempo_filter(
-                speed
-            ),
+            atempo_filter(speed),
             "-c:a",
             "aac",
             "-b:a",
             "160k",
-            str(output_audio),
+            str(out)
         ],
-        timeout=180,
+        180
     )
 
-    if result.returncode != 0:
+    if (
+        r.returncode
+        or not out.exists()
+    ):
         raise RuntimeError(
-            "TTS timing ပြင်မရပါ။\n\n"
-            + (
-                result.stderr
-                or ""
-            )
-        )
-
-    if not output_audio.exists():
-        raise RuntimeError(
-            "Fitted TTS file မထွက်ပါ။"
+            "TTS timing ပြင်မရပါ။\n"
+            + (r.stderr or "")
         )
 
 
-# ============================================================
-# CREATE BURMESE AUDIO
-# ============================================================
+def validate_audio(path):
 
-def create_burmese_audio(
+    r = run_cmd(
+        [
+            FFMPEG,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(path),
+            "-map",
+            "0:a:0",
+            "-f",
+            "null",
+            "-"
+        ],
+        300
+    )
+
+    return r.returncode == 0
+
+
+def make_burmese_audio(
     segments,
     voice,
-    duration,
-    workdir,
-    callback,
+    dur,
+    work,
+    progress
 ):
-    audio_files = []
 
-    total = len(
-        segments
-    )
+    files = []
+    total = len(segments)
 
-    for index, segment in enumerate(
+    for i, s in enumerate(
         segments,
-        start=1,
+        1
     ):
 
-        start = float(
-            segment["start"]
+        progress(
+            (i - 1)
+            / max(total, 1),
+            f"TTS {i}/{total}"
         )
 
-        end = float(
-            segment["end"]
-        )
-
-        slot = max(
-            0.25,
-            end - start,
-        )
-
-        text = segment[
-            "burmese"
-        ]
-
-        raw_tts = (
-            workdir
-            / f"tts_{index:04d}.mp3"
+        raw = (
+            work
+            / f"tts_{i:04d}.mp3"
         )
 
         fitted = (
-            workdir
-            / f"fitted_{index:04d}.m4a"
+            work
+            / f"fit_{i:04d}.m4a"
         )
 
-        callback(
-            index,
-            total,
-            f"TTS {index}/{total}"
-        )
-
-        generate_tts(
-            text,
+        tts(
+            s["burmese"],
             voice,
-            raw_tts,
+            raw
         )
 
-        fit_audio_to_slot(
-            raw_tts,
+        fit_tts(
+            raw,
             fitted,
-            slot,
+            max(
+                0.25,
+                s["end"] - s["start"]
+            )
         )
 
-        audio_files.append(
-            {
-                "start": start,
-                "file": fitted,
-            }
+        files.append(
+            (
+                s["start"],
+                fitted
+            )
         )
 
-    if not audio_files:
+    if not files:
         raise RuntimeError(
-            "Burmese TTS audio မရှိပါ။"
+            "Burmese dialogue မရှိပါ။"
         )
 
-    # --------------------------------------------------------
-    # Build FFmpeg command
-    # --------------------------------------------------------
-
-    command = [
+    cmd = [
         FFMPEG,
         "-y",
         "-hide_banner",
         "-loglevel",
-        "error",
+        "error"
     ]
 
-    for item in audio_files:
-
-        command.extend(
-            [
-                "-i",
-                str(
-                    item["file"]
-                ),
-            ]
-        )
+    for _, f in files:
+        cmd += [
+            "-i",
+            str(f)
+        ]
 
     filters = []
-
     labels = []
 
-    for index, item in enumerate(
-        audio_files
-    ):
+    for i, (start, _) in enumerate(files):
 
-        delay = int(
-            round(
-                item["start"]
-                * 1000
-            )
+        ms = int(
+            round(start * 1000)
         )
 
-        label = f"a{index}"
+        label = f"a{i}"
 
         filters.append(
-            f"[{index}:a]"
+            f"[{i}:a]"
             f"aresample=48000,"
-            f"adelay={delay}|{delay},"
-            f"apad"
-            f"[{label}]"
+            f"adelay={ms}|{ms},"
+            f"apad[{label}]"
         )
 
         labels.append(
             f"[{label}]"
         )
 
-    mixed = "[mixed]"
-
     filters.append(
         "".join(labels)
         + f"amix="
-        f"inputs={len(labels)}:"
-        f"duration=longest:"
-        f"dropout_transition=0"
-        f"{mixed}"
+          f"inputs={len(labels)}:"
+          f"duration=longest:"
+          f"dropout_transition=0"
+          f"[mix]"
     )
 
-    command.extend(
-        [
-            "-filter_complex",
-            ";".join(
-                filters
-            ),
-            "-map",
-            mixed,
-            "-t",
-            f"{duration:.3f}",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "160k",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-        ]
-    )
-
-    output_audio = (
-        workdir
+    out = (
+        work
         / "burmese_audio.m4a"
     )
 
-    command.append(
-        str(output_audio)
+    cmd += [
+        "-filter_complex",
+        ";".join(filters),
+        "-map",
+        "[mix]",
+        "-t",
+        f"{dur:.3f}",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        str(out)
+    ]
+
+    r = run_cmd(
+        cmd,
+        1800
     )
 
-    result = run_command(
-        command,
-        timeout=1200,
+    if (
+        r.returncode
+        or not out.exists()
+        or out.stat().st_size < 5000
+        or not validate_audio(out)
+    ):
+        raise RuntimeError(
+            "Burmese audio "
+            "mixing/validation "
+            "မအောင်မြင်ပါ။\n"
+            + (r.stderr or "")
+        )
+
+    progress(
+        1.0,
+        "Burmese audio OK"
     )
 
-    if result.returncode != 0:
-        raise RuntimeError(
-            "Burmese audio mixing မအောင်မြင်ပါ။\n\n"
-            + (
-                result.stderr
-                or ""
-            )
+    return out
+
+
+def validate_video(path):
+
+    if (
+        not path.exists()
+        or path.stat().st_size < 10000
+    ):
+        return (
+            False,
+            "Final video file မမှန်ပါ။"
         )
 
-    if not output_audio.exists():
-        raise RuntimeError(
-            "Burmese audio file မထွက်လာပါ။"
+    v = run_cmd(
+        [
+            FFMPEG,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(path),
+            "-map",
+            "0:v:0",
+            "-f",
+            "null",
+            "-"
+        ],
+        300
+    )
+
+    if v.returncode:
+        return (
+            False,
+            "Video decode မအောင်မြင်ပါ။"
         )
 
-    if output_audio.stat().st_size < 5000:
-        raise RuntimeError(
-            "Burmese audio file အလွတ်ဖြစ်နေပါတယ်။"
+    a = run_cmd(
+        [
+            FFMPEG,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(path),
+            "-map",
+            "0:a:0",
+            "-f",
+            "null",
+            "-"
+        ],
+        300
+    )
+
+    if a.returncode:
+        return (
+            False,
+            "Final video ထဲမှာ "
+            "Audio track မရှိပါ "
+            "သို့မဟုတ် decode မရပါ။"
         )
 
-    return output_audio
+    return True, "OK"
 
 
-# ============================================================
-# FINAL VIDEO
-# ============================================================
-
-def export_final_video(
-    video_path,
-    audio_path,
-    output_path,
+def export_video(
+    video,
+    audio,
+    out
 ):
-    result = run_command(
+
+    d = duration(video)
+
+    if d <= 0:
+        raise RuntimeError(
+            "Video duration မမှန်ပါ။"
+        )
+
+    r = run_cmd(
         [
             FFMPEG,
             "-y",
@@ -959,13 +774,14 @@ def export_final_video(
             "error",
 
             "-i",
-            str(video_path),
+            str(video),
 
             "-i",
-            str(audio_path),
+            str(audio),
 
             "-map",
             "0:v:0",
+
             "-map",
             "1:a:0",
 
@@ -985,82 +801,19 @@ def export_final_video(
             "2",
 
             "-t",
-            "0",
+            f"{d:.3f}",
 
             "-movflags",
             "+faststart",
 
-            str(output_path),
+            str(out)
         ],
-        timeout=1800,
+        1800
     )
 
-    # --------------------------------------------------------
-    # IMPORTANT:
-    # The first export intentionally retries with correct
-    # video duration below.
-    # --------------------------------------------------------
+    if r.returncode:
 
-    if output_path.exists():
-        try:
-            if output_path.stat().st_size > 10000:
-                return
-        except Exception:
-            pass
-
-    # Fallback export
-    video_duration = get_duration(
-        video_path
-    )
-
-    result = run_command(
-        [
-            FFMPEG,
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-
-            "-i",
-            str(video_path),
-
-            "-i",
-            str(audio_path),
-
-            "-map",
-            "0:v:0",
-            "-map",
-            "1:a:0",
-
-            "-c:v",
-            "copy",
-
-            "-c:a",
-            "aac",
-
-            "-b:a",
-            "160k",
-
-            "-ar",
-            "48000",
-
-            "-ac",
-            "2",
-
-            "-t",
-            f"{video_duration:.3f}",
-
-            "-movflags",
-            "+faststart",
-
-            str(output_path),
-        ],
-        timeout=1800,
-    )
-
-    if result.returncode != 0:
-        # Final fallback: re-encode video
-        result = run_command(
+        r = run_cmd(
             [
                 FFMPEG,
                 "-y",
@@ -1069,13 +822,14 @@ def export_final_video(
                 "error",
 
                 "-i",
-                str(video_path),
+                str(video),
 
                 "-i",
-                str(audio_path),
+                str(audio),
 
                 "-map",
                 "0:v:0",
+
                 "-map",
                 "1:a:0",
 
@@ -1104,511 +858,218 @@ def export_final_video(
                 "2",
 
                 "-t",
-                f"{video_duration:.3f}",
+                f"{d:.3f}",
 
                 "-movflags",
                 "+faststart",
 
-                str(output_path),
+                str(out)
             ],
-            timeout=3600,
+            3600
         )
 
-    if result.returncode != 0:
+    if r.returncode:
+
         raise RuntimeError(
-            "Final video export မအောင်မြင်ပါ။\n\n"
-            + (
-                result.stderr
-                or ""
-            )
+            "Final video export "
+            "မအောင်မြင်ပါ။\n"
+            + (r.stderr or "")
+        )
+
+    ok, msg = validate_video(out)
+
+    if not ok:
+
+        raise RuntimeError(
+            "Final video validation "
+            "မအောင်မြင်ပါ။\n"
+            + msg
         )
 
 
-# ============================================================
-# VALIDATE FINAL VIDEO
-# ============================================================
+st.title("🎬 Movie Dubbing AI")
 
-def validate_final_video(
-    video_path
-):
-    if not video_path.exists():
-        return False, "Final video file မရှိပါ။"
+st.caption(
+    "Video → AI dialogue → "
+    "Burmese dubbing → Preview → Download"
+)
 
-    if video_path.stat().st_size < 10000:
-        return False, "Final video file အလွတ်နီးပါးဖြစ်နေပါတယ်။"
+if "final_bytes" not in st.session_state:
+    st.session_state.final_bytes = None
 
-    # Check video
-    video_check = run_command(
-        [
-            FFMPEG,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(video_path),
-            "-map",
-            "0:v:0",
-            "-frames:v",
-            "1",
-            "-f",
-            "null",
-            "-",
-        ],
-        timeout=180,
-    )
-
-    if video_check.returncode != 0:
-        return False, (
-            "Video track မမှန်ပါ။\n"
-            + (
-                video_check.stderr
-                or ""
-            )
-        )
-
-    # Check audio
-    audio_check = run_command(
-        [
-            FFMPEG,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(video_path),
-            "-map",
-            "0:a:0",
-            "-t",
-            "1",
-            "-f",
-            "null",
-            "-",
-        ],
-        timeout=180,
-    )
-
-    if audio_check.returncode != 0:
-        return False, (
-            "❌ Final video ထဲမှာ Audio track မရှိပါ။"
-        )
-
-    # Check duration
-    try:
-        duration = get_duration(
-            video_path
-        )
-
-        if duration <= 0:
-            return False, (
-                "Video duration မမှန်ပါ။"
-            )
-
-    except Exception as error:
-        return False, str(error)
-
-    return True, (
-        f"Video OK • Audio OK • "
-        f"Duration {duration:.1f}s"
+if "final_name" not in st.session_state:
+    st.session_state.final_name = (
+        "dubbed_video.mp4"
     )
 
 
-# ============================================================
-# SIDEBAR
-# ============================================================
-
-with st.sidebar:
-
-    st.subheader(
-        "🎙️ Burmese Voice"
-    )
-
-    voice_name = st.selectbox(
-        "အသံရွေးပါ",
-        list(
-            VOICE_MAP.keys()
-        ),
-    )
-
-    selected_voice = VOICE_MAP[
-        voice_name
-    ]
-
-    st.divider()
-
-    st.caption(
-        "Final Video ကို Download မလုပ်ခင် "
-        "ဒီ App ထဲမှာ Preview ကြည့်နိုင်ပါတယ်။"
-    )
-
-
-# ============================================================
-# UPLOAD
-# ============================================================
-
-uploaded_video = st.file_uploader(
+uploaded = st.file_uploader(
     "🎥 Video တင်ပါ",
     type=[
         "mp4",
-        "mkv",
         "mov",
-        "avi",
-        "webm",
-    ],
+        "mkv",
+        "webm"
+    ]
+)
+
+voice_name = st.selectbox(
+    "🎙️ အသံ",
+    list(VOICES)
+)
+
+start = st.button(
+    "🚀 Start Dubbing",
+    type="primary",
+    use_container_width=True
 )
 
 
-if uploaded_video:
+if start:
 
-    st.video(
-        uploaded_video
-    )
+    st.session_state.final_bytes = None
 
-    start_button = st.button(
-        "🚀 START DUBBING",
-        type="primary",
-        use_container_width=True,
-    )
+    if not uploaded:
 
-    if start_button:
-
-        progress = st.progress(
-            0
+        st.error(
+            "Video တစ်ခုအရင်တင်ပါ။"
         )
 
-        status = st.empty()
+        st.stop()
 
-        eta_box = st.empty()
+    try:
 
-        started_at = time.time()
+        with tempfile.TemporaryDirectory() as td:
 
-        def update(
-            percent,
-            message,
-        ):
-            percent = max(
-                0,
-                min(
-                    100,
-                    percent,
-                ),
+            work = Path(td)
+
+            video = (
+                work
+                / "input_video"
             )
 
-            progress.progress(
-                int(percent)
+            video.write_bytes(
+                uploaded.getbuffer()
             )
 
-            status.info(
-                message
+            dur = duration(video)
+
+            status = st.empty()
+
+            bar = st.progress(0.0)
+
+            def set_status(text):
+                status.info(text)
+
+            set_status(
+                "1/5 Video စစ်နေသည်..."
             )
 
-            elapsed = (
-                time.time()
-                - started_at
+            audio = (
+                work
+                / "original_audio.wav"
             )
 
-            if percent > 1:
-
-                estimated = (
-                    elapsed
-                    * 100
-                    / percent
-                )
-
-                remaining = max(
-                    0,
-                    estimated
-                    - elapsed,
-                )
-
-                eta_box.caption(
-                    f"Progress: "
-                    f"{percent:.0f}% "
-                    f"• ETA: "
-                    f"{int(remaining)} sec"
-                )
-
-        try:
-
-            with tempfile.TemporaryDirectory(
-                prefix="movie_dubbing_"
-            ) as temp_dir:
-
-                workdir = Path(
-                    temp_dir
-                )
-
-                # ------------------------------------------------
-                # Save input
-                # ------------------------------------------------
-
-                input_path = (
-                    workdir
-                    / uploaded_video.name
-                )
-
-                with open(
-                    input_path,
-                    "wb",
-                ) as file:
-
-                    file.write(
-                        uploaded_video.getbuffer()
-                    )
-
-                # ------------------------------------------------
-                # 1. VIDEO CHECK
-                # ------------------------------------------------
-
-                update(
-                    5,
-                    "1/6 Video စစ်ဆေးနေသည်..."
-                )
-
-                duration = get_duration(
-                    input_path
-                )
-
-                # ------------------------------------------------
-                # 2. AUDIO
-                # ------------------------------------------------
-
-                update(
-                    10,
-                    "2/6 Original audio ထုတ်နေသည်..."
-                )
-
-                source_audio = (
-                    workdir
-                    / "source_audio.wav"
-                )
-
-                extract_audio(
-                    input_path,
-                    source_audio,
-                )
-
-                # ------------------------------------------------
-                # 3. GEMINI
-                # ------------------------------------------------
-
-                update(
-                    18,
-                    "3/6 Gemini AI "
-                    "dialogue စစ်နေသည်..."
-                )
-
-                client = get_client()
-
-                def ai_status(message):
-                    update(
-                        20,
-                        "3/6 " + message
-                    )
-
-                segments, model_used = (
-                    analyze_movie_audio(
-                        client,
-                        source_audio,
-                        duration,
-                        ai_status,
-                    )
-                )
-
-                update(
-                    45,
-                    f"3/6 Dialogue "
-                    f"{len(segments)} ခုရပြီ "
-                    f"• {model_used}"
-                )
-
-                # ------------------------------------------------
-                # 4. TTS
-                # ------------------------------------------------
-
-                def tts_status(
-                    index,
-                    total,
-                    message,
-                ):
-                    percent = (
-                        48
-                        + (
-                            index
-                            / max(
-                                total,
-                                1,
-                            )
-                        )
-                        * 32
-                    )
-
-                    update(
-                        percent,
-                        "4/6 " + message
-                    )
-
-                burmese_audio = (
-                    create_burmese_audio(
-                        segments,
-                        selected_voice,
-                        duration,
-                        workdir,
-                        tts_status,
-                    )
-                )
-
-                # ------------------------------------------------
-                # Check Burmese audio before mux
-                # ------------------------------------------------
-
-                update(
-                    82,
-                    "Burmese audio "
-                    "တကယ်ထွက်မထွက် စစ်နေသည်..."
-                )
-
-                audio_test = run_command(
-                    [
-                        FFMPEG,
-                        "-hide_banner",
-                        "-loglevel",
-                        "error",
-                        "-i",
-                        str(
-                            burmese_audio
-                        ),
-                        "-map",
-                        "0:a:0",
-                        "-t",
-                        "1",
-                        "-f",
-                        "null",
-                        "-",
-                    ],
-                    timeout=180,
-                )
-
-                if audio_test.returncode != 0:
-                    raise RuntimeError(
-                        "Burmese TTS audio ကို "
-                        "စစ်တဲ့အခါ မအောင်မြင်ပါ။"
-                    )
-
-                # ------------------------------------------------
-                # 5. FINAL VIDEO
-                # ------------------------------------------------
-
-                update(
-                    88,
-                    "5/6 Final video "
-                    "နဲ့ Burmese audio ပေါင်းနေသည်..."
-                )
-
-                final_path = (
-                    workdir
-                    / "Movie_Dubbed_Burmese.mp4"
-                )
-
-                export_final_video(
-                    input_path,
-                    burmese_audio,
-                    final_path,
-                )
-
-                # ------------------------------------------------
-                # 6. VALIDATE
-                # ------------------------------------------------
-
-                update(
-                    96,
-                    "6/6 Final video "
-                    "ကို စစ်ဆေးနေသည်..."
-                )
-
-                valid, validation_message = (
-                    validate_final_video(
-                        final_path
-                    )
-                )
-
-                if not valid:
-                    raise RuntimeError(
-                        validation_message
-                    )
-
-                update(
-                    100,
-                    "✅ Final Video အဆင်ပြေပါပြီ"
-                )
-
-                st.success(
-                    "🎉 Final Video အောင်မြင်ပါတယ်။"
-                )
-
-                st.info(
-                    "👇 အရင်ဆုံး ဒီနေရာမှာ Video ကို "
-                    "ကြည့်ပြီး အသံပါ/မပါ စစ်ပါ။ "
-                    "အဆင်ပြေမှ Download လုပ်ပါ။"
-                )
-
-                # =================================================
-                # FINAL PREVIEW
-                # =================================================
-
-                st.subheader(
-                    "🎬 Final Video Preview"
-                )
-
-                st.video(
-                    str(final_path)
-                )
-
-                st.success(
-                    "🔊 Audio Track: OK\n\n"
-                    + validation_message
-                )
-
-                # =================================================
-                # DOWNLOAD
-                # =================================================
-
-                with open(
-                    final_path,
-                    "rb",
-                ) as file:
-
-                    final_video_bytes = (
-                        file.read()
-                    )
-
-                st.download_button(
-                    "⬇️ Download Final Video",
-                    data=final_video_bytes,
-                    file_name=(
-                        "Movie_Dubbed_Burmese.mp4"
-                    ),
-                    mime="video/mp4",
-                    use_container_width=True,
-                )
-
-        except Exception as error:
-
-            progress.progress(
-                0
+            extract_audio(
+                video,
+                audio
             )
 
-            eta_box.empty()
+            bar.progress(0.10)
 
-            status.error(
-                "❌ Processing မအောင်မြင်ပါ။"
+            set_status(
+                "2/5 AI dialogue "
+                "နားထောင်/ဘာသာပြန်နေသည်..."
             )
 
-            st.error(
-                str(error)
+            seg, model = analyze(
+                client(),
+                audio,
+                dur,
+                set_status
             )
 
-else:
+            bar.progress(0.35)
 
-    st.info(
-        "Video တင်ပြီး "
-        "START DUBBING ကိုနှိပ်ပါ။"
+            st.success(
+                f"AI model: {model} • "
+                f"Dialogue: {len(seg)} lines"
+            )
+
+            set_status(
+                "3/5 Burmese voice "
+                "ထုတ်နေသည်..."
+            )
+
+            def prog(p, t):
+
+                bar.progress(
+                    0.35 + 0.45 * p
+                )
+
+                status.info(t)
+
+            burmese = make_burmese_audio(
+                seg,
+                VOICES[voice_name],
+                dur,
+                work,
+                prog
+            )
+
+            set_status(
+                "4/5 Final video "
+                "ပြုလုပ်နေသည်..."
+            )
+
+            final = (
+                work
+                / "final_dubbed.mp4"
+            )
+
+            export_video(
+                video,
+                burmese,
+                final
+            )
+
+            bar.progress(0.95)
+
+            data = final.read_bytes()
+
+            st.session_state.final_bytes = data
+
+            st.session_state.final_name = (
+                "dubbed_video.mp4"
+            )
+
+            bar.progress(1.0)
+
+            status.success(
+                "5/5 ပြီးပါပြီ — "
+                "Video + Burmese audio "
+                "validation OK"
+            )
+
+    except Exception as e:
+
+        st.exception(e)
+
+
+if st.session_state.final_bytes:
+
+    st.subheader(
+        "🎬 Preview"
+    )
+
+    st.video(
+        st.session_state.final_bytes
+    )
+
+    st.download_button(
+        "⬇️ Download Final Video",
+        st.session_state.final_bytes,
+        st.session_state.final_name,
+        "video/mp4",
+        use_container_width=True
     )
