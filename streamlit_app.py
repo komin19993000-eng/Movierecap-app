@@ -26,10 +26,10 @@ VOICES = {
     "နီလာ (အမျိုးသမီး)": "my-MM-NilarNeural",
 }
 
+# Model အသစ်များဖြင့် ပြင်ဆင်ထားပါသည်
 MODELS = [
-    "gemini-2.5-flash",
-    "gemini-1.5-flash",
-    "gemini-2.0-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
 ]
 
 
@@ -106,7 +106,6 @@ def analyze_audio_full(client, audio_path, total_dur, status_box):
     status_box.update(label="Gemini API သို့ Audio တင်ပို့နေသည်...", state="running")
     uploaded = client.files.upload(file=str(audio_path))
 
-    # Gemini ဖိုင် စစ်ဆေးမှု ပြည့်စုံအောင် ခဏစောင့်ပေးခြင်း
     time.sleep(2)
 
     prompt = f"""
