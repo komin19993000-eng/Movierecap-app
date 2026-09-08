@@ -6,9 +6,9 @@ import asyncio
 import subprocess
 import tempfile
 from pathlib import Path
-from pydantic import BaseModel, Field
 
 import streamlit as st
+import whisper
 from google import genai
 from google.genai import types
 import edge_tts
@@ -26,21 +26,6 @@ VOICES = {
     "သီဟ (အမျိုးသား)": "my-MM-ThihaNeural",
     "နီလာ (အမျိုးသမီး)": "my-MM-NilarNeural",
 }
-
-# Stable Flash Models
-MODELS = [
-    "gemini-2.5-flash",
-    "gemini-1.5-flash",
-]
-
-# Strict Structured Output Schema
-class DialogueSegment(BaseModel):
-    start: float = Field(description="Start time in seconds")
-    end: float = Field(description="End time in seconds")
-    burmese: str = Field(description="Burmese translation of spoken text")
-
-class DubbingResponse(BaseModel):
-    segments: list[DialogueSegment]
 
 
 def run_cmd(args, timeout=1800):
@@ -73,59 +58,74 @@ def extract_audio(video, out):
 
 
 @st.cache_resource
-def get_client():
+def get_gemini_client():
     key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY", ""))
     if not key:
         raise RuntimeError("GEMINI_API_KEY မတွေ့ပါ။ Streamlit Secrets ထဲတွင် ထည့်ပေးပါ။")
     return genai.Client(api_key=key)
 
 
-def analyze_audio_full(client, audio_path, status_box):
-    status_box.update(label="AI ဘာသာပြန်ဆိုနေသည်...", state="running")
-    uploaded = client.files.upload(file=str(audio_path))
+@st.cache_resource
+def load_whisper_model():
+    # Fast & Light model for STT
+    return whisper.load_model("base")
+
+
+def transcribe_with_whisper(audio_path, status_box):
+    status_box.update(label="1/4 OpenAI Whisper ဖြင့် Audio စကားပြော ဖတ်ယူနေသည်...", state="running")
+    model = load_whisper_model()
+    result = model.transcribe(str(audio_path))
     
-    # Audio Upload Process အချိန်ပေးခြင်း
-    time.sleep(3)
+    segments = []
+    for s in result.get("segments", []):
+        text = s.get("text", "").strip()
+        if text:
+            segments.append({
+                "start": float(s["start"]),
+                "end": float(s["end"]),
+                "text": text
+            })
+    return segments
 
-    total_dur = duration(audio_path)
 
+def translate_with_gemini(segments, client, status_box):
+    status_box.update(label="2/4 Gemini AI ဖြင့် မြန်မာဘာသာသို့ ပြန်ဆိုနေသည်...", state="running")
+    
+    if not segments:
+        raise RuntimeError("Whisper မှ ဗီဒီယိုထဲတွင် စကားပြော မတွေ့ရှိပါ။")
+
+    input_json = json.dumps(segments, ensure_ascii=False)
+    
     prompt = f"""
-Listen to the audio file (total duration: {total_dur:.2f} seconds).
-Transcribe all spoken dialogues and translate them into natural spoken Burmese for movie dubbing.
-Provide accurate start and end timestamps in seconds.
+Translate the following speech dialogue segments into natural, movie-style spoken Burmese.
+Keep the exact same JSON structure with keys: "start", "end", and "burmese" (translated text).
+
+Input:
+{input_json}
+
+Return STRICTLY a JSON array of objects like this:
+[
+  {{"start": 0.5, "end": 2.1, "burmese": "မြန်မာစာသား"}}
+]
 """
 
-    for model in MODELS:
-        try:
-            resp = client.models.generate_content(
-                model=model,
-                contents=[uploaded, prompt],
-                config=types.GenerateContentConfig(
-                    temperature=0.1,
-                    response_mime_type="application/json",
-                    response_schema=DubbingResponse,
-                )
-            )
-            
-            if resp.parsed and resp.parsed.segments:
-                valid_segments = []
-                for item in resp.parsed.segments:
-                    if item.burmese and item.burmese.strip():
-                        s = max(0.0, min(float(item.start), total_dur))
-                        e = max(s + 0.1, min(float(item.end), total_dur))
-                        valid_segments.append({
-                            "start": s,
-                            "end": e,
-                            "burmese": item.burmese.strip()
-                        })
-                
-                if valid_segments:
-                    valid_segments.sort(key=lambda x: x["start"])
-                    return valid_segments, model, total_dur
-        except Exception:
-            continue
+    resp = client.models.generate_content(
+        model="gemini-2.5-flash",
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            temperature=0.2,
+            response_mime_type="application/json"
+        )
+    )
 
-    raise RuntimeError("Gemini API မှ စကားပြော ဖတ်ယူ၍ မရပါ။ API Key သို့မဟုတ် Video ဖိုင်၏ အသံကို စစ်ဆေးပါ။")
+    raw_text = getattr(resp, "text", "").strip()
+    
+    # Cleanup markdown JSON tags if present
+    raw_text = re.sub(r"^```(?:json)?\s*", "", raw_text, flags=re.I)
+    raw_text = re.sub(r"\s*```$", "", raw_text)
+    
+    translated_data = json.loads(raw_text)
+    return translated_data
 
 
 async def tts_async(text, voice, out):
@@ -172,13 +172,14 @@ def build_final_audio(segments, voice, total_dur, work_dir, status_box):
     total = len(segments)
 
     for i, s in enumerate(segments, 1):
-        status_box.update(label=f"မြန်မာအသံ ထုတ်လုပ်နေသည် ({i}/{total})...", state="running")
+        status_box.update(label=f"3/4 မြန်မာအသံ ထုတ်လုပ်နေသည် ({i}/{total})...", state="running")
         raw = work_dir / f"tts_{i:04d}.mp3"
         fitted = work_dir / f"fit_{i:04d}.wav"
 
-        generate_tts(s["burmese"], voice, raw)
-        fit_tts_audio(raw, fitted, max(0.2, s["end"] - s["start"]))
-        tts_files.append((s["start"], fitted))
+        text = s.get("burmese") or s.get("text", "")
+        generate_tts(text, voice, raw)
+        fit_tts_audio(raw, fitted, max(0.2, float(s["end"]) - float(s["start"])))
+        tts_files.append((float(s["start"]), fitted))
 
     status_box.update(label="မြန်မာ Audio များကို ပေါင်းစပ်နေသည်...", state="running")
 
@@ -231,8 +232,8 @@ def merge_video_audio(video_path, audio_path, output_path):
         ], 3600)
 
 
-st.title("🎬 Movie Dubbing AI")
-st.caption("Video တင်ပါ → Gemini AI dialogue ဖတ်ရှုမည် → မြန်မာ အသံထပ်ပေးမည်")
+st.title("🎬 Movie Dubbing AI (Whisper + Gemini)")
+st.caption("Whisper ဖြင့် Audio ကို စိတ်ချစွာဖတ်ရှုမည် → Gemini ဖြင့် မြန်မာပြန်မည် → အသံထပ်ပေးမည်")
 
 if "final_bytes" not in st.session_state:
     st.session_state.final_bytes = None
@@ -254,15 +255,21 @@ if start:
                 input_video = work_dir / "input_video.mp4"
                 input_video.write_bytes(uploaded.getbuffer())
 
-                status_box.update(label="1/4 Video မှ Audio ထုတ်ယူနေသည်...", state="running")
                 orig_audio = work_dir / "orig_audio.wav"
                 extract_audio(input_video, orig_audio)
+                total_dur = duration(orig_audio)
 
-                segments, used_model, total_dur = analyze_audio_full(get_client(), orig_audio, status_box)
-                st.write(f"✅ AI Model: **{used_model}** | Dialogue စာကြောင်းရေ: **{len(segments)} လိုင်း**")
+                # 1. Whisper Transcription
+                whisper_segs = transcribe_with_whisper(orig_audio, status_box)
+                
+                # 2. Gemini Translation
+                translated_segs = translate_with_gemini(whisper_segs, get_gemini_client(), status_box)
+                st.write(f"✅ Dialogue စာကြောင်းရေ: **{len(translated_segs)} လိုင်း** တိကျစွာ ဖတ်ပြီးပါပြီ။")
 
-                burmese_audio = build_final_audio(segments, VOICES[voice_name], total_dur, work_dir, status_box)
+                # 3. Audio Dubbing (100% Burmese Pure Stream)
+                burmese_audio = build_final_audio(translated_segs, VOICES[voice_name], total_dur, work_dir, status_box)
 
+                # 4. Merge Video and New Audio
                 status_box.update(label="4/4 Video နှင့် Audio ပေါင်းစပ်နေသည်...", state="running")
                 final_video = work_dir / "final_output.mp4"
                 merge_video_audio(input_video, burmese_audio, final_video)
