@@ -230,16 +230,17 @@ def build_final_audio(segments, voice, total_dur, orig_audio, work_dir, status_b
         fit_tts_audio(raw, fitted, max(0.2, s["end"] - s["start"]))
         tts_files.append((s["start"], fitted))
 
-    status_box.update(label="Audio များကို မူရင်း Background Sound နှင့် ပေါင်းစပ်နေသည်...", state="running")
+    status_box.update(label="မြန်မာ Audio များကို ပေါင်းစပ်နေသည်...", state="running")
 
-    cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error", "-i", str(orig_audio)]
+    # မူရင်း တရုတ်အသံအား လုံးဝ မပါအောင် ဖြုတ်ပြီး မြန်မာအသံ သီးသန့် ပေါင်းစပ်ခြင်း
+    cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error"]
     for _, f in tts_files:
         cmd += ["-i", str(f)]
 
-    filters = ["[0:a]aformat=sample_rates=48000:channel_layouts=stereo,volume=0.20[bg]"]
-    labels = ["[bg]"]
+    filters = []
+    labels = []
 
-    for i, (start_time, _) in enumerate(tts_files, start=1):
+    for i, (start_time, _) in enumerate(tts_files):
         ms = int(round(start_time * 1000))
         label = f"a{i}"
         filters.append(f"[{i}:a]aformat=sample_rates=48000:channel_layouts=stereo,adelay={ms}|{ms}[{label}]")
