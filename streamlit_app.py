@@ -15,309 +15,33 @@ import imageio_ffmpeg
 from google import genai
 
 
+# ============================================================
+# PAGE
+# ============================================================
+
 st.set_page_config(
     page_title="Myanmar Movie AI",
     page_icon="🎬",
     layout="wide",
-    initial_sidebar_state="collapsed",
 )
+
+
+# ============================================================
+# FFMPEG
+# ============================================================
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 
 
-# =========================================================
-# UI
-# =========================================================
-
-st.markdown(
-"""<style>
-
-[data-testid="stAppViewContainer"] {
-    background:
-        radial-gradient(circle at 0% 0%, rgba(0, 102, 255, 0.30), transparent 35%),
-        radial-gradient(circle at 100% 20%, rgba(255, 0, 55, 0.28), transparent 35%),
-        linear-gradient(145deg, #050b18 0%, #08142b 45%, #12060d 100%);
-}
-
-[data-testid="stHeader"] {
-    background: transparent;
-}
-
-.block-container {
-    max-width: 1050px;
-    padding-top: 1.5rem;
-    padding-bottom: 3rem;
-}
-
-.stApp,
-.stApp p,
-.stApp span,
-.stApp label,
-.stApp div {
-    color: #ffffff;
-}
-
-.hero {
-    padding: 30px 24px;
-    border-radius: 24px;
-    background:
-        linear-gradient(
-            135deg,
-            rgba(0, 100, 255, 0.28),
-            rgba(255, 0, 65, 0.25)
-        );
-    border: 1px solid rgba(255,255,255,0.20);
-    box-shadow:
-        0 15px 50px rgba(0,0,0,0.55),
-        0 0 35px rgba(0,100,255,0.12);
-    margin-bottom: 25px;
-}
-
-.hero h1 {
-    color: #ffffff !important;
-    font-size: 2.5rem !important;
-    font-weight: 900 !important;
-    margin: 0 0 10px 0 !important;
-    text-shadow: 0 0 12px rgba(0,140,255,0.65);
-}
-
-.hero p {
-    color: #f5f7ff !important;
-    font-size: 1.05rem !important;
-    font-weight: 600 !important;
-}
-
-.badge {
-    display: inline-block;
-    padding: 7px 13px;
-    margin: 4px;
-    border-radius: 999px;
-    background:
-        linear-gradient(
-            90deg,
-            rgba(0,120,255,0.75),
-            rgba(255,0,70,0.75)
-        );
-    color: #ffffff !important;
-    font-size: 0.88rem !important;
-    font-weight: 800 !important;
-    border: 1px solid rgba(255,255,255,0.25);
-    box-shadow: 0 4px 15px rgba(0,0,0,0.30);
-}
-
-.step {
-    font-size: 1.55rem !important;
-    font-weight: 900 !important;
-    color: #ffffff !important;
-    margin-top: 28px;
-    margin-bottom: 10px;
-    text-shadow: 0 0 12px rgba(0,120,255,0.55);
-}
-
-.stCaption,
-[data-testid="stCaptionContainer"] {
-    color: #dce6ff !important;
-    font-size: 1rem !important;
-    font-weight: 600 !important;
-}
-
-.card {
-    padding: 20px;
-    border-radius: 20px;
-    background:
-        linear-gradient(
-            135deg,
-            rgba(20,40,75,0.92),
-            rgba(55,15,25,0.90)
-        );
-    border: 1px solid rgba(255,255,255,0.14);
-    box-shadow: 0 10px 35px rgba(0,0,0,0.45);
-}
-
-h1,
-h2,
-h3,
-.stSubheader {
-    color: #ffffff !important;
-    font-weight: 900 !important;
-}
-
-[data-testid="stFileUploader"] {
-    background:
-        linear-gradient(
-            135deg,
-            rgba(0,95,255,0.18),
-            rgba(255,0,60,0.15)
-        );
-    border: 2px dashed rgba(90,160,255,0.65);
-    border-radius: 18px;
-    padding: 8px;
-    box-shadow: 0 5px 25px rgba(0,0,0,0.30);
-}
-
-[data-testid="stFileUploader"] section {
-    background: transparent !important;
-}
-
-[data-testid="stFileUploader"] button {
-    background:
-        linear-gradient(
-            90deg,
-            #087cff,
-            #ff174d
-        ) !important;
-    color: #ffffff !important;
-    border: none !important;
-    font-weight: 900 !important;
-    border-radius: 12px !important;
-}
-
-[data-baseweb="select"] > div {
-    background: #f7f9ff !important;
-    border: 2px solid rgba(40,120,255,0.55) !important;
-    border-radius: 14px !important;
-    min-height: 50px !important;
-}
-
-[data-baseweb="select"] span {
-    color: #101827 !important;
-    font-weight: 800 !important;
-}
-
-[data-baseweb="select"] svg {
-    fill: #176cff !important;
-}
-
-[data-testid="stSlider"] label {
-    color: #ffffff !important;
-    font-weight: 800 !important;
-    font-size: 1rem !important;
-}
-
-div.stButton > button {
-    min-height: 52px !important;
-    border-radius: 15px !important;
-    border: none !important;
-    background:
-        linear-gradient(
-            90deg,
-            #006eff 0%,
-            #174cff 48%,
-            #ff174d 100%
-        ) !important;
-    color: #ffffff !important;
-    font-size: 1.05rem !important;
-    font-weight: 900 !important;
-    box-shadow: 0 8px 25px rgba(0,80,255,0.30);
-    transition:
-        transform 0.15s ease,
-        box-shadow 0.15s ease;
-}
-
-div.stButton > button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 10px 30px rgba(255,30,80,0.35);
-}
-
-[data-testid="stDownloadButton"] button {
-    min-height: 50px !important;
-    border-radius: 14px !important;
-    background:
-        linear-gradient(
-            90deg,
-            #008cff,
-            #005eff
-        ) !important;
-    color: #ffffff !important;
-    font-size: 1rem !important;
-    font-weight: 900 !important;
-    border: none !important;
-    box-shadow: 0 7px 20px rgba(0,100,255,0.30);
-}
-
-[data-testid="stTextArea"] textarea {
-    background: #f7f9ff !important;
-    color: #111827 !important;
-    border: 2px solid rgba(50,120,255,0.45) !important;
-    border-radius: 16px !important;
-    font-size: 15px !important;
-    font-weight: 600 !important;
-    line-height: 1.7 !important;
-}
-
-[data-testid="stAlert"] {
-    border-radius: 15px !important;
-    border: 1px solid rgba(90,160,255,0.35) !important;
-    background: rgba(10,55,120,0.55) !important;
-}
-
-[data-testid="stAlert"] p,
-[data-testid="stAlert"] div {
-    color: #ffffff !important;
-    font-weight: 700 !important;
-}
-
-[data-testid="stMetricValue"] {
-    color: #ffffff !important;
-    font-size: 1.8rem !important;
-    font-weight: 900 !important;
-}
-
-[data-testid="stMetricLabel"] {
-    color: #c9d7ff !important;
-    font-weight: 700 !important;
-}
-
-@media (max-width: 600px) {
-
-    .block-container {
-        padding-left: 14px;
-        padding-right: 14px;
-        padding-top: 1rem;
-    }
-
-    .hero {
-        padding: 23px 17px;
-        border-radius: 20px;
-    }
-
-    .hero h1 {
-        font-size: 2rem !important;
-    }
-
-    .hero p {
-        font-size: 0.95rem !important;
-        line-height: 1.6 !important;
-    }
-
-    .step {
-        font-size: 1.3rem !important;
-    }
-
-    .badge {
-        font-size: 0.78rem !important;
-        padding: 6px 9px;
-    }
-
-    div.stButton > button {
-        min-height: 54px !important;
-        font-size: 1rem !important;
-    }
-}
-
-</style>""",
-    unsafe_allow_html=True,
-)
-
-
-# =========================================================
-# CONFIG
-# =========================================================
+# ============================================================
+# VOICES
+# ============================================================
 
 VOICES = {
     "သီဟ (အမျိုးသား)": "my-MM-ThihaNeural",
     "နီလာ (အမျိုးသမီး)": "my-MM-NilarNeural",
 }
+
 
 VOICE_STYLES = {
     "ပုံမှန်": {
@@ -338,6 +62,11 @@ VOICE_STYLES = {
     },
 }
 
+
+# ============================================================
+# GEMINI
+# ============================================================
+
 GEMINI_MODELS = [
     "gemini-3.8-flash",
     "gemini-3.7-flash",
@@ -346,6 +75,7 @@ GEMINI_MODELS = [
     "gemini-3.5-flash-lite",
     "gemini-3.1-flash-lite",
 ]
+
 
 RETRY_WORDS = (
     "503",
@@ -361,9 +91,89 @@ RETRY_WORDS = (
 )
 
 
-# =========================================================
-# COMMON
-# =========================================================
+# ============================================================
+# CSS
+# ============================================================
+
+st.markdown(
+    """
+    <style>
+
+    .stApp {
+        background:
+            radial-gradient(
+                circle at top left,
+                rgba(0, 102, 255, 0.16),
+                transparent 34%
+            ),
+            radial-gradient(
+                circle at top right,
+                rgba(255, 40, 70, 0.12),
+                transparent 32%
+            ),
+            #050914;
+    }
+
+    .main-title {
+        text-align: center;
+        padding: 8px 0 18px 0;
+    }
+
+    .main-title h1 {
+        font-size: 2.2rem;
+        font-weight: 800;
+        margin-bottom: 5px;
+        background: linear-gradient(
+            90deg,
+            #32a8ff,
+            #ffffff,
+            #ff3b5c
+        );
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+    }
+
+    .main-title p {
+        color: #aeb9cc;
+        font-size: 0.95rem;
+    }
+
+    .section-card {
+        border: 1px solid rgba(70, 130, 255, 0.25);
+        border-radius: 18px;
+        padding: 20px;
+        margin: 12px 0 20px 0;
+        background: rgba(10, 17, 32, 0.72);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.22);
+    }
+
+    .step-title {
+        font-size: 1.25rem;
+        font-weight: 750;
+        margin-bottom: 10px;
+    }
+
+    div.stButton > button {
+        border-radius: 12px;
+        font-weight: 700;
+        min-height: 48px;
+    }
+
+    div.stDownloadButton > button {
+        border-radius: 12px;
+        font-weight: 700;
+        min-height: 46px;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# HELPERS
+# ============================================================
 
 def run_cmd(args, timeout=1800):
     return subprocess.run(
@@ -375,6 +185,70 @@ def run_cmd(args, timeout=1800):
         timeout=timeout,
     )
 
+
+def get_secret(name):
+    value = st.secrets.get(name, "")
+    if value:
+        return str(value).strip()
+
+    return os.getenv(name, "").strip()
+
+
+def gemini_client():
+    key = get_secret("GEMINI_API_KEY")
+
+    if not key:
+        raise RuntimeError(
+            "GEMINI_API_KEY မတွေ့ပါ။ Streamlit Secrets ထဲမှာ ထည့်ပါ။"
+        )
+
+    return genai.Client(api_key=key)
+
+
+def deepgram_key():
+    key = get_secret("DEEPGRAM_API_KEY")
+
+    if not key:
+        raise RuntimeError(
+            "DEEPGRAM_API_KEY မတွေ့ပါ။ Streamlit Secrets ထဲမှာ ထည့်ပါ။"
+        )
+
+    return key
+
+
+def clean_text(text):
+    return re.sub(r"\s+", " ", str(text or "")).strip()
+
+
+def safe_filename(name):
+    name = str(name or "").strip()
+
+    name = re.sub(
+        r'[\\/:*?"<>|]+',
+        "_",
+        name,
+    )
+
+    name = re.sub(
+        r"\s+",
+        "_",
+        name,
+    )
+
+    name = name.strip("._ ")
+
+    if name.lower().endswith(".m4a"):
+        name = name[:-4]
+
+    if not name:
+        name = "myanmar_voiceover"
+
+    return name + ".m4a"
+
+
+# ============================================================
+# MEDIA
+# ============================================================
 
 def ffprobe_duration(path):
     r = run_cmd(
@@ -404,45 +278,6 @@ def ffprobe_duration(path):
     )
 
 
-def get_secret(name):
-    try:
-        value = st.secrets.get(name, "")
-        if value:
-            return str(value).strip()
-    except Exception:
-        pass
-
-    return os.getenv(name, "").strip()
-
-
-# =========================================================
-# SAFE FILE NAME
-# =========================================================
-
-def safe_filename(name):
-    name = str(name or "").strip()
-
-    if name.lower().endswith(".m4a"):
-        name = name[:-4]
-
-    name = re.sub(
-        r"[^A-Za-z0-9._-]+",
-        "_",
-        name,
-    )
-
-    name = name.strip("._-")
-
-    if not name:
-        name = "myanmar_voiceover"
-
-    return name + ".m4a"
-
-
-# =========================================================
-# AUDIO EXTRACTION
-# =========================================================
-
 def extract_audio(video, out):
     r = run_cmd(
         [
@@ -466,7 +301,7 @@ def extract_audio(video, out):
     )
 
     if (
-        r.returncode != 0
+        r.returncode
         or not out.exists()
         or out.stat().st_size < 1000
     ):
@@ -476,37 +311,9 @@ def extract_audio(video, out):
         )
 
 
-# =========================================================
-# GEMINI
-# =========================================================
-
-def gemini_client():
-    key = get_secret("GEMINI_API_KEY")
-
-    if not key:
-        raise RuntimeError(
-            "GEMINI_API_KEY မတွေ့ပါ။ "
-            "Streamlit Secrets ထဲမှာ ထည့်ပါ။"
-        )
-
-    return genai.Client(api_key=key)
-
-
-# =========================================================
+# ============================================================
 # DEEPGRAM
-# =========================================================
-
-def deepgram_key():
-    key = get_secret("DEEPGRAM_API_KEY")
-
-    if not key:
-        raise RuntimeError(
-            "DEEPGRAM_API_KEY မတွေ့ပါ။ "
-            "Streamlit Secrets ထဲမှာ ထည့်ပါ။"
-        )
-
-    return key
-
+# ============================================================
 
 def deepgram_transcribe(audio_path):
     url = "https://api.deepgram.com/v1/listen"
@@ -518,6 +325,7 @@ def deepgram_transcribe(audio_path):
         "smart_format": "true",
         "utterances": "true",
         "diarize": "true",
+        "words": "true",
     }
 
     headers = {
@@ -527,11 +335,11 @@ def deepgram_transcribe(audio_path):
 
     data = audio_path.read_bytes()
 
-    last_error = ""
+    last = ""
 
     for attempt in range(3):
         try:
-            response = requests.post(
+            r = requests.post(
                 url,
                 params=params,
                 headers=headers,
@@ -539,13 +347,35 @@ def deepgram_transcribe(audio_path):
                 timeout=900,
             )
 
-            if response.status_code == 200:
-                obj = response.json()
+            if r.status_code == 200:
+                obj = r.json()
 
                 results = obj.get(
                     "results",
                     {},
                 )
+
+                channels = results.get(
+                    "channels",
+                    [],
+                )
+
+                if channels:
+                    alternatives = channels[0].get(
+                        "alternatives",
+                        [],
+                    )
+
+                    if alternatives:
+                        alt = alternatives[0]
+
+                        words = alt.get(
+                            "words",
+                            [],
+                        ) or []
+
+                        if words:
+                            return words
 
                 utterances = results.get(
                     "utterances",
@@ -553,38 +383,32 @@ def deepgram_transcribe(audio_path):
                 ) or []
 
                 if utterances:
-                    return utterances
+                    words = []
 
-                channels = results.get(
-                    "channels",
-                    [],
-                ) or []
-
-                if channels:
-                    alternatives = channels[0].get(
-                        "alternatives",
-                        [],
-                    ) or []
-
-                    if alternatives:
-                        words = alternatives[0].get(
+                    for u in utterances:
+                        u_words = u.get(
                             "words",
                             [],
                         ) or []
 
-                        if words:
-                            return words_to_utterances(words)
+                        if u_words:
+                            words.extend(u_words)
+
+                    if words:
+                        return words
+
+                    return utterances
 
                 raise RuntimeError(
-                    "Deepgram က transcript မပြန်ပေးပါ။"
+                    "Deepgram က dialogue/timestamp မပြန်ပေးပါ။"
                 )
 
-            last_error = (
-                f"HTTP {response.status_code}: "
-                f"{response.text[:500]}"
+            last = (
+                f"HTTP {r.status_code}: "
+                f"{r.text[:500]}"
             )
 
-            if response.status_code not in (
+            if r.status_code not in (
                 429,
                 500,
                 502,
@@ -594,123 +418,286 @@ def deepgram_transcribe(audio_path):
                 break
 
         except Exception as e:
-            last_error = str(e)
+            last = str(e)
 
         time.sleep(
-            2 ** attempt + random.random()
+            2 ** attempt
+            + random.random()
         )
 
     raise RuntimeError(
         "Deepgram STT မအောင်မြင်ပါ။\n"
-        + last_error
+        + last
     )
 
 
-def words_to_utterances(words):
-    output = []
-    current = []
+# ============================================================
+# WORD HELPERS
+# ============================================================
 
-    for word in words:
-        current.append(word)
-
-        punct = str(
+def get_word_text(word):
+    return clean_text(
+        word.get(
+            "punctuated_word",
             word.get(
-                "punctuated_word",
-                word.get("word", ""),
+                "word",
+                "",
+            ),
+        )
+    )
+
+
+def get_word_start(word):
+    try:
+        return float(
+            word.get(
+                "start",
+                0,
             )
         )
+    except Exception:
+        return 0.0
 
-        if punct.endswith(
-            (
-                ".",
-                "!",
-                "?",
-                "။",
-                "！",
-                "？",
+
+def get_word_end(word):
+    try:
+        return float(
+            word.get(
+                "end",
+                get_word_start(word),
             )
-        ):
-            output.append(
+        )
+    except Exception:
+        return get_word_start(word)
+
+
+def is_sentence_end(text):
+    return str(text).rstrip().endswith(
+        (
+            ".",
+            "!",
+            "?",
+            "。",
+            "！",
+            "？",
+            "...",
+            "…",
+        )
+    )
+
+
+def is_strong_pause(previous_end, current_start):
+    return (
+        current_start - previous_end
+        >= 0.65
+    )
+
+
+# ============================================================
+# SMART SUBTITLE SEGMENTATION
+# ============================================================
+
+def build_subtitle_segments(raw_items):
+    """
+    Deepgram word timestamps ကို အသုံးပြုပြီး
+    dialogue အရှည်ကြီးတွေကို subtitle အတိုအပိုင်းတွေခွဲသည်။
+
+    Rules:
+    - max characters ~ 42
+    - max duration ~ 6 sec
+    - long pause ရှိရင် ခွဲ
+    - sentence punctuation ရှိရင် ခွဲ
+    - စကားလုံးအလယ်မှာ မဖြတ်
+    """
+
+    words = []
+
+    for item in raw_items:
+
+        if "words" in item:
+            source_words = item.get(
+                "words",
+                [],
+            ) or []
+        else:
+            source_words = [item]
+
+        for w in source_words:
+
+            text = get_word_text(w)
+
+            if not text:
+                continue
+
+            start = get_word_start(w)
+            end = get_word_end(w)
+
+            if end <= start:
+                continue
+
+            words.append(
                 {
-                    "start": float(
-                        current[0].get(
-                            "start",
-                            0,
-                        )
-                    ),
-                    "end": float(
-                        current[-1].get(
-                            "end",
-                            current[-1].get(
-                                "start",
-                                0,
-                            ),
-                        )
-                    ),
-                    "transcript": " ".join(
-                        str(
-                            x.get(
-                                "punctuated_word",
-                                x.get(
-                                    "word",
-                                    "",
-                                ),
-                            )
-                        )
-                        for x in current
-                    ).strip(),
+                    "text": text,
+                    "start": start,
+                    "end": end,
                 }
             )
 
-            current = []
+    if not words:
+        raise RuntimeError(
+            "Dialogue word timestamp မတွေ့ပါ။"
+        )
+
+    words.sort(
+        key=lambda x: x["start"]
+    )
+
+    segments = []
+
+    current = []
+
+    MAX_CHARS = 42
+    MAX_DURATION = 6.0
+
+    for word in words:
+
+        if not current:
+            current = [word]
+            continue
+
+        current_text = " ".join(
+            x["text"]
+            for x in current
+        )
+
+        proposed_text = (
+            current_text
+            + " "
+            + word["text"]
+        )
+
+        current_start = current[0]["start"]
+        current_end = current[-1]["end"]
+
+        duration = (
+            word["end"]
+            - current_start
+        )
+
+        pause = (
+            word["start"]
+            - current_end
+        )
+
+        should_split = False
+
+        # Sentence end
+        if is_sentence_end(
+            current[-1]["text"]
+        ):
+            should_split = True
+
+        # Long pause
+        if is_strong_pause(
+            current_end,
+            word["start"],
+        ):
+            should_split = True
+
+        # Too long
+        if (
+            len(proposed_text)
+            > MAX_CHARS
+        ):
+            should_split = True
+
+        # Too long in time
+        if duration > MAX_DURATION:
+            should_split = True
+
+        if should_split:
+
+            if current:
+                segments.append(
+                    {
+                        "start": current[0]["start"],
+                        "end": current[-1]["end"],
+                        "source": " ".join(
+                            x["text"]
+                            for x in current
+                        ).strip(),
+                    }
+                )
+
+            current = [word]
+
+        else:
+            current.append(word)
 
     if current:
-        output.append(
+        segments.append(
             {
-                "start": float(
-                    current[0].get(
-                        "start",
-                        0,
-                    )
-                ),
-                "end": float(
-                    current[-1].get(
-                        "end",
-                        current[-1].get(
-                            "start",
-                            0,
-                        ),
-                    )
-                ),
-                "transcript": " ".join(
-                    str(
-                        x.get(
-                            "punctuated_word",
-                            x.get(
-                                "word",
-                                "",
-                            ),
-                        )
-                    )
+                "start": current[0]["start"],
+                "end": current[-1]["end"],
+                "source": " ".join(
+                    x["text"]
                     for x in current
                 ).strip(),
             }
         )
 
-    return output
+    # --------------------------------------------------------
+    # Final validation
+    # --------------------------------------------------------
+
+    cleaned = []
+
+    for item in segments:
+
+        start = max(
+            0.0,
+            float(item["start"]),
+        )
+
+        end = float(item["end"])
+
+        text = clean_text(
+            item["source"]
+        )
+
+        if not text:
+            continue
+
+        if end <= start:
+            continue
+
+        # Prevent accidental overlaps
+        if cleaned:
+            if start < cleaned[-1]["end"]:
+                start = cleaned[-1]["end"]
+
+        if end <= start:
+            continue
+
+        cleaned.append(
+            {
+                "start": start,
+                "end": end,
+                "source": text,
+            }
+        )
+
+    if not cleaned:
+        raise RuntimeError(
+            "Valid subtitle segments မတွေ့ပါ။"
+        )
+
+    return cleaned
 
 
-# =========================================================
-# TEXT / TRANSLATION
-# =========================================================
-
-def clean_text(value):
-    return re.sub(
-        r"\s+",
-        " ",
-        str(value or ""),
-    ).strip()
-
+# ============================================================
+# GEMINI JSON
+# ============================================================
 
 def clean_json(text):
     text = (text or "").strip()
@@ -728,39 +715,66 @@ def clean_json(text):
         text,
     )
 
-    start = text.find("[")
-    end = text.rfind("]")
+    a = text.find("[")
+    b = text.rfind("]")
 
-    if start >= 0 and end > start:
-        return text[start:end + 1]
+    if a >= 0 and b > a:
+        return text[a:b + 1]
 
     return text
 
 
+# ============================================================
+# TRANSLATION
+# ============================================================
+
 def translate_batch(client, items):
-    prompt = (
-        "You are a professional movie subtitle translator.\n"
-        "Translate each source dialogue into natural "
-        "conversational Burmese (Myanmar language).\n"
-        "Keep names, meaning, emotion, and context.\n"
-        "Do not add explanations.\n"
-        "Keep each translation concise enough for the "
-        "same timestamp.\n"
-        "Return ONLY a JSON array with exactly the same "
-        "number of objects and the same id values.\n"
-        'Format: [{"id":1,"burmese":"..."}]\n\n'
-        "INPUT:\n"
-        + json.dumps(
-            items,
-            ensure_ascii=False,
-        )
+
+    prompt = """
+You are a professional movie subtitle translator.
+
+Translate each source dialogue into natural,
+conversational Burmese (Myanmar language).
+
+IMPORTANT RULES:
+
+1. Preserve the exact meaning.
+2. Preserve names.
+3. Preserve emotion and context.
+4. Do not add explanations.
+5. Do not summarize.
+6. Do not merge different IDs.
+7. Keep translations short enough for subtitle display.
+8. Each result MUST keep the exact same ID.
+9. Return ONLY valid JSON.
+10. Do not use markdown.
+
+The input already contains carefully timed,
+short subtitle segments.
+
+Return exactly this format:
+
+[
+  {
+    "id": 1,
+    "burmese": "မြန်မာစာ"
+  }
+]
+
+INPUT:
+""" + json.dumps(
+        items,
+        ensure_ascii=False,
     )
 
     errors = []
 
     for model in GEMINI_MODELS:
+
         for attempt in range(2):
+
             try:
+
                 response = client.models.generate_content(
                     model=model,
                     contents=prompt,
@@ -777,151 +791,145 @@ def translate_batch(client, items):
                 )
 
                 if (
-                    not isinstance(data, list)
-                    or len(data) != len(items)
+                    not isinstance(
+                        data,
+                        list,
+                    )
+                    or len(data)
+                    != len(items)
                 ):
                     raise RuntimeError(
-                        "Gemini translation result "
-                        "count မကိုက်ပါ။"
+                        "Gemini translation result count မကိုက်ပါ။"
                     )
 
                 by_id = {}
 
-                for item in data:
-                    item_id = int(item["id"])
+                for x in data:
 
-                    Burmese = clean_text(
-                        item["burmese"]
+                    try:
+                        item_id = int(
+                            x["id"]
+                        )
+                    except Exception:
+                        continue
+
+                    burmese = clean_text(
+                        x.get(
+                            "burmese",
+                            "",
+                        )
                     )
 
-                    by_id[item_id] = Burmese
+                    if burmese:
+                        by_id[
+                            item_id
+                        ] = burmese
 
-                expected_ids = range(
-                    1,
-                    len(items) + 1,
-                )
+                expected_ids = [
+                    int(x["id"])
+                    for x in items
+                ]
 
-                for item_id in expected_ids:
-                    if (
-                        item_id not in by_id
-                        or not by_id[item_id]
-                    ):
-                        raise RuntimeError(
-                            "ဘာသာပြန်စာကြောင်းတချို့ "
-                            "မထွက်ပါ။"
-                        )
+                if any(
+                    item_id not in by_id
+                    for item_id in expected_ids
+                ):
+                    raise RuntimeError(
+                        "ဘာသာပြန်စာကြောင်းတချို့ မထွက်ပါ။"
+                    )
 
-                return by_id
+                return {
+                    item_id: by_id[item_id]
+                    for item_id in expected_ids
+                }
 
             except Exception as e:
-                error_text = str(e)
 
                 errors.append(
-                    f"{model} attempt "
-                    f"{attempt + 1}: {error_text}"
+                    f"{model} "
+                    f"attempt {attempt + 1}: "
+                    f"{e}"
                 )
+
+                error_text = str(e).lower()
 
                 if (
                     attempt == 0
                     and any(
-                        word in error_text.lower()
-                        for word in RETRY_WORDS
+                        x in error_text
+                        for x in RETRY_WORDS
                     )
                 ):
                     time.sleep(
-                        3 + random.random() * 2
+                        3
+                        + random.random() * 2
                     )
                 else:
                     break
 
     raise RuntimeError(
         "Gemini translation မအောင်မြင်ပါ။\n"
-        + "\n".join(errors[-8:])
+        + "\n".join(
+            errors[-8:]
+        )
     )
 
 
-def build_segments(client, utterances, progress):
-    rows = []
+# ============================================================
+# BUILD FINAL SEGMENTS
+# ============================================================
 
-    for utterance in utterances:
+def build_segments(
+    client,
+    subtitle_segments,
+    progress,
+):
 
-        text = clean_text(
-            utterance.get(
-                "transcript",
-                "",
-            )
-        )
+    result = []
 
-        start = float(
-            utterance.get(
-                "start",
-                0,
-            )
-        )
+    total = len(
+        subtitle_segments
+    )
 
-        end = float(
-            utterance.get(
-                "end",
-                start,
-            )
-        )
+    # Smaller batches because subtitle
+    # segments are now more numerous.
+    batch_size = 20
 
-        if (
-            text
-            and end > start + 0.05
-        ):
-            rows.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "source": text,
-                }
-            )
-
-    if not rows:
-        raise RuntimeError(
-            "ပြောဆိုချက် မတွေ့ပါ။"
-        )
-
-    output = []
-
-    batch_size = 12
-
-    for position in range(
+    for pos in range(
         0,
-        len(rows),
+        total,
         batch_size,
     ):
 
-        batch = rows[
-            position:
-            position + batch_size
+        batch = subtitle_segments[
+            pos:
+            pos + batch_size
         ]
 
         payload = []
 
-        for index, item in enumerate(
+        for i, item in enumerate(
             batch,
             1,
         ):
             payload.append(
                 {
-                    "id": index,
+                    "id": i,
                     "text": item["source"],
                 }
             )
 
         progress(
-            0.2
-            + 0.45
+            0.20
+            + 0.50
             * (
-                position
-                / max(len(rows), 1)
+                pos
+                / max(total, 1)
             ),
             (
                 "Gemini ဘာသာပြန်နေသည်... "
-                f"{min(position + len(batch), len(rows))}"
-                f"/{len(rows)}"
+                f"{min(pos + len(batch), total)}"
+                f"/{total}"
             ),
         )
 
@@ -930,76 +938,102 @@ def build_segments(client, utterances, progress):
             payload,
         )
 
-        for index, item in enumerate(
+        for i, item in enumerate(
             batch,
             1,
         ):
-            output.append(
+
+            burmese = clean_text(
+                translated[i]
+            )
+
+            if not burmese:
+                continue
+
+            result.append(
                 {
                     "start": item["start"],
                     "end": item["end"],
-                    "burmese": translated[index],
+                    "burmese": burmese,
                 }
             )
 
-    return output
+    if not result:
+        raise RuntimeError(
+            "မြန်မာဘာသာပြန် subtitle မထွက်ပါ။"
+        )
+
+    return result
 
 
-# =========================================================
+# ============================================================
 # SRT
-# =========================================================
+# ============================================================
 
 def srt_time(seconds):
+
     seconds = max(
         0.0,
         float(seconds),
     )
 
-    milliseconds = int(
-        round(seconds * 1000)
+    ms = int(
+        round(
+            seconds * 1000
+        )
     )
 
-    hours, remainder = divmod(
-        milliseconds,
+    h, rem = divmod(
+        ms,
         3600000,
     )
 
-    minutes, remainder = divmod(
-        remainder,
+    m, rem = divmod(
+        rem,
         60000,
     )
 
-    secs, milliseconds = divmod(
-        remainder,
+    s, ms = divmod(
+        rem,
         1000,
     )
 
     return (
-        f"{hours:02d}:"
-        f"{minutes:02d}:"
-        f"{secs:02d},"
-        f"{milliseconds:03d}"
+        f"{h:02d}:"
+        f"{m:02d}:"
+        f"{s:02d},"
+        f"{ms:03d}"
     )
 
 
 def make_srt(segments):
+
     blocks = []
 
-    for index, segment in enumerate(
+    for i, segment in enumerate(
         segments,
         1,
     ):
+
         blocks.append(
-            f"{index}\n"
-            f"{srt_time(segment['start'])} --> "
+            f"{i}\n"
+            f"{srt_time(segment['start'])}"
+            f" --> "
             f"{srt_time(segment['end'])}\n"
             f"{segment['burmese']}\n"
         )
 
-    return "\n".join(blocks)
+    return "\n".join(
+        blocks
+    )
 
+
+# ============================================================
+# SRT PARSER
+# ============================================================
 
 def parse_srt(text):
+
     text = (
         text
         .replace("\r\n", "\n")
@@ -1012,13 +1046,13 @@ def parse_srt(text):
         text,
     )
 
-    output = []
+    out = []
 
     for block in blocks:
 
         lines = [
-            line.strip("\ufeff")
-            for line in block.split("\n")
+            x.strip("\ufeff")
+            for x in block.split("\n")
         ]
 
         if len(lines) < 3:
@@ -1026,9 +1060,9 @@ def parse_srt(text):
 
         time_line = next(
             (
-                line
-                for line in lines
-                if "-->" in line
+                x
+                for x in lines
+                if "-->" in x
             ),
             None,
         )
@@ -1049,97 +1083,104 @@ def parse_srt(text):
 
         def parse_time(value):
 
-            value = value.replace(
-                ",",
-                ".",
-            )
-
-            hours, minutes, seconds = (
-                value.split(":")
+            h, minute, sec = (
+                value
+                .replace(",", ".")
+                .split(":")
             )
 
             return (
-                int(hours) * 3600
-                + int(minutes) * 60
-                + float(seconds)
+                int(h) * 3600
+                + int(minute) * 60
+                + float(sec)
             )
 
-        start = parse_time(
-            match.group(1)
-        )
-
-        end = parse_time(
-            match.group(2)
-        )
-
-        time_index = lines.index(
+        index = lines.index(
             time_line
         )
 
-        subtitle_lines = lines[
-            time_index + 1:
+        text_lines = [
+            x.strip()
+            for x in lines[index + 1:]
+            if x.strip()
         ]
 
-        subtitle = clean_text(
-            " ".join(subtitle_lines)
+        text_value = clean_text(
+            " ".join(text_lines)
         )
 
-        if (
-            subtitle
-            and end > start
-        ):
-            output.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "burmese": subtitle,
-                }
-            )
-
-    output.sort(
-        key=lambda item: item["start"]
-    )
-
-    # Automatic overlap correction
-    cleaned = []
-
-    for item in output:
-
-        if item["end"] <= item["start"]:
+        if not text_value:
             continue
 
-        if (
-            cleaned
-            and item["start"]
-            < cleaned[-1]["end"]
-        ):
-            item["start"] = (
-                cleaned[-1]["end"]
-            )
+        out.append(
+            {
+                "start": parse_time(
+                    match.group(1)
+                ),
+                "end": parse_time(
+                    match.group(2)
+                ),
+                "burmese": text_value,
+            }
+        )
 
-        if item["end"] > item["start"]:
-            cleaned.append(item)
+    out.sort(
+        key=lambda x: x["start"]
+    )
+
+    cleaned = []
+
+    for item in out:
+
+        start = float(
+            item["start"]
+        )
+
+        end = float(
+            item["end"]
+        )
+
+        if end <= start:
+            continue
+
+        # Auto-fix overlap
+        if cleaned:
+            if start < cleaned[-1]["end"]:
+                start = cleaned[-1]["end"]
+
+        if end <= start:
+            continue
+
+        cleaned.append(
+            {
+                "start": start,
+                "end": end,
+                "burmese": clean_text(
+                    item["burmese"]
+                ),
+            }
+        )
 
     if not cleaned:
         raise RuntimeError(
-            "SRT ထဲမှာ valid subtitle "
-            "မတွေ့ပါ။"
+            "SRT ထဲမှာ valid subtitle မတွေ့ပါ။"
         )
 
     return cleaned
 
 
-# =========================================================
-# BURMESE TTS
-# =========================================================
+# ============================================================
+# EDGE TTS
+# ============================================================
 
 async def edge_tts_save(
     text,
     voice,
     rate,
     pitch,
-    output,
+    out,
 ):
+
     communicate = edge_tts.Communicate(
         text=text,
         voice=voice,
@@ -1148,7 +1189,7 @@ async def edge_tts_save(
     )
 
     await communicate.save(
-        str(output)
+        str(out)
     )
 
 
@@ -1156,9 +1197,12 @@ def make_tts(
     text,
     voice,
     style,
-    output,
+    out,
 ):
-    config = VOICE_STYLES[style]
+
+    cfg = VOICE_STYLES[
+        style
+    ]
 
     errors = []
 
@@ -1166,22 +1210,23 @@ def make_tts(
 
         try:
 
-            if output.exists():
-                output.unlink()
+            if out.exists():
+                out.unlink()
 
             asyncio.run(
                 edge_tts_save(
                     text,
                     voice,
-                    config["rate"],
-                    config["pitch"],
-                    output,
+                    cfg["rate"],
+                    cfg["pitch"],
+                    out,
                 )
             )
 
             if (
-                output.exists()
-                and output.stat().st_size > 1000
+                out.exists()
+                and out.stat().st_size
+                > 1000
             ):
                 return
 
@@ -1191,7 +1236,9 @@ def make_tts(
 
         except Exception as e:
 
-            errors.append(str(e))
+            errors.append(
+                str(e)
+            )
 
             time.sleep(
                 2 + attempt
@@ -1199,52 +1246,70 @@ def make_tts(
 
     raise RuntimeError(
         "Burmese TTS မအောင်မြင်ပါ။\n"
-        + "\n".join(errors[-3:])
+        + "\n".join(
+            errors[-3:]
+        )
     )
 
 
-# =========================================================
-# AUDIO SPEED / TIMING
-# =========================================================
+# ============================================================
+# AUDIO SPEED
+# ============================================================
 
 def atempo_chain(speed):
 
     speed = max(
         0.25,
-        min(float(speed), 4.0),
+        min(
+            float(speed),
+            4.0,
+        ),
     )
 
     parts = []
 
     while speed > 2.0:
-        parts.append("atempo=2.0")
+        parts.append(
+            "atempo=2.0"
+        )
         speed /= 2.0
 
     while speed < 0.5:
-        parts.append("atempo=0.5")
+        parts.append(
+            "atempo=0.5"
+        )
         speed /= 0.5
 
     parts.append(
         f"atempo={speed:.6f}"
     )
 
-    return ",".join(parts)
+    return ",".join(
+        parts
+    )
 
+
+# ============================================================
+# FIT TTS TO SRT SLOT
+# ============================================================
 
 def fit_clip(
-    source,
-    output,
+    src,
+    out,
     slot,
     user_speed,
 ):
 
     raw_duration = ffprobe_duration(
-        source
+        src
     )
 
     desired_speed = max(
         0.25,
-        min(float(user_speed), 2.0),
+        min(
+            float(user_speed),
+            2.0,
+        ),
     )
 
     final_speed = (
@@ -1254,16 +1319,22 @@ def fit_clip(
 
     final_speed = max(
         0.25,
-        min(final_speed, 4.0),
+        min(
+            final_speed,
+            4.0,
+        ),
     )
 
     filter_audio = (
-        atempo_chain(final_speed)
-        + ",apad,atrim=duration="
+        atempo_chain(
+            final_speed
+        )
+        + ",apad,"
+        + "atrim=duration="
         + f"{slot:.3f}"
     )
 
-    result = run_cmd(
+    r = run_cmd(
         [
             FFMPEG,
             "-y",
@@ -1271,7 +1342,7 @@ def fit_clip(
             "-loglevel",
             "error",
             "-i",
-            str(source),
+            str(src),
             "-filter:a",
             filter_audio,
             "-c:a",
@@ -1282,25 +1353,25 @@ def fit_clip(
             "48000",
             "-ac",
             "2",
-            str(output),
+            str(out),
         ],
         180,
     )
 
     if (
-        result.returncode != 0
-        or not output.exists()
-        or output.stat().st_size < 1000
+        r.returncode
+        or not out.exists()
+        or out.stat().st_size < 1000
     ):
         raise RuntimeError(
             "Voiceover timing ပြင်မရပါ။\n"
-            + (result.stderr or "")
+            + (r.stderr or "")
         )
 
 
-# =========================================================
-# BUILD COMPLETE VOICEOVER
-# =========================================================
+# ============================================================
+# BUILD VOICEOVER
+# ============================================================
 
 def build_voiceover(
     segments,
@@ -1313,55 +1384,64 @@ def build_voiceover(
 
     clips = []
 
-    total = len(segments)
+    total = len(
+        segments
+    )
 
-    for index, segment in enumerate(
+    for i, segment in enumerate(
         segments,
         1,
     ):
 
         start = max(
             0.0,
-            float(segment["start"]),
+            float(
+                segment["start"]
+            ),
         )
 
         end = max(
             start + 0.05,
-            float(segment["end"]),
+            float(
+                segment["end"]
+            ),
         )
 
         slot = end - start
 
-        raw_audio = (
+        raw = (
             work
-            / f"tts_{index:04d}.mp3"
+            / f"tts_{i:04d}.mp3"
         )
 
-        fitted_audio = (
+        fitted = (
             work
-            / f"clip_{index:04d}.m4a"
+            / f"clip_{i:04d}.m4a"
         )
 
         progress(
-            0.1
-            + 0.65
+            0.05
+            + 0.70
             * (
-                (index - 1)
+                (i - 1)
                 / max(total, 1)
             ),
-            f"Voice {index}/{total} ထုတ်နေသည်...",
+            (
+                f"Voice {i}/{total} "
+                "ထုတ်နေသည်..."
+            ),
         )
 
         make_tts(
             segment["burmese"],
             voice,
             style,
-            raw_audio,
+            raw,
         )
 
         fit_clip(
-            raw_audio,
-            fitted_audio,
+            raw,
+            fitted,
             slot,
             speed,
         )
@@ -1369,16 +1449,21 @@ def build_voiceover(
         clips.append(
             (
                 start,
-                fitted_audio,
+                fitted,
             )
         )
 
-    output = (
+    if not clips:
+        raise RuntimeError(
+            "Voiceover segment မရှိပါ။"
+        )
+
+    out = (
         work
         / "burmese_voiceover.m4a"
     )
 
-    command = [
+    cmd = [
         FFMPEG,
         "-y",
         "-hide_banner",
@@ -1387,7 +1472,7 @@ def build_voiceover(
     ]
 
     for _, clip in clips:
-        command += [
+        cmd += [
             "-i",
             str(clip),
         ]
@@ -1395,21 +1480,25 @@ def build_voiceover(
     filters = []
     labels = []
 
-    for index, (
+    for i, (
         start,
         _,
     ) in enumerate(clips):
 
-        milliseconds = max(
+        delay_ms = max(
             0,
-            int(round(start * 1000)),
+            int(
+                round(
+                    start * 1000
+                )
+            ),
         )
 
-        label = f"v{index}"
+        label = f"v{i}"
 
         filters.append(
-            f"[{index}:a]"
-            f"adelay={milliseconds}:all=1,"
+            f"[{i}:a]"
+            f"adelay={delay_ms}:all=1,"
             f"aresample=48000"
             f"[{label}]"
         )
@@ -1418,25 +1507,29 @@ def build_voiceover(
             f"[{label}]"
         )
 
-    # =====================================================
     # IMPORTANT:
-    # Final loudness processing
-    #
-    # loudnorm = makes voice consistently louder/clearer
-    # alimiter = prevents clipping/distortion
-    # =====================================================
-
-    filters.append(
+    # Normalize final voiceover louder,
+    # then limiter prevents clipping.
+    mix_filter = (
         "".join(labels)
-        + f"amix=inputs={len(labels)}:"
-        "duration=longest:"
-        "dropout_transition=0,"
-        "loudnorm=I=-16:TP=-1.5:LRA=7,"
-        "alimiter=limit=0.95"
+        + f"amix="
+        f"inputs={len(labels)}:"
+        f"duration=longest:"
+        f"dropout_transition=0,"
+        "loudnorm="
+        "I=-14:"
+        "TP=-1.5:"
+        "LRA=7,"
+        "alimiter="
+        "limit=0.95"
         "[out]"
     )
 
-    command += [
+    filters.append(
+        mix_filter
+    )
+
+    cmd += [
         "-filter_complex",
         ";".join(filters),
         "-map",
@@ -1449,28 +1542,25 @@ def build_voiceover(
         "48000",
         "-ac",
         "2",
-        str(output),
+        str(out),
     ]
 
-    result = run_cmd(
-        command,
+    r = run_cmd(
+        cmd,
         1800,
     )
 
     if (
-        result.returncode != 0
-        or not output.exists()
-        or output.stat().st_size < 5000
+        r.returncode
+        or not out.exists()
+        or out.stat().st_size < 5000
     ):
         raise RuntimeError(
             "Voiceover file မထုတ်နိုင်ပါ။\n"
-            + (result.stderr or "")
+            + (r.stderr or "")
         )
 
-    # =====================================================
-    # FINAL AUDIO VALIDATION
-    # =====================================================
-
+    # Final decode validation
     check = run_cmd(
         [
             FFMPEG,
@@ -1478,7 +1568,7 @@ def build_voiceover(
             "-loglevel",
             "error",
             "-i",
-            str(output),
+            str(out),
             "-f",
             "null",
             "-",
@@ -1486,10 +1576,9 @@ def build_voiceover(
         300,
     )
 
-    if check.returncode != 0:
+    if check.returncode:
         raise RuntimeError(
-            "Voiceover audio validation "
-            "မအောင်မြင်ပါ။\n"
+            "Voiceover audio validation မအောင်မြင်ပါ။\n"
             + (check.stderr or "")
         )
 
@@ -1498,46 +1587,44 @@ def build_voiceover(
         "Voiceover ပြီးပါပြီ",
     )
 
-    return output
+    return out
 
 
-# =========================================================
-# HERO
-# =========================================================
+# ============================================================
+# HEADER
+# ============================================================
 
 st.markdown(
-"""<div class="hero">
-<h1>🎬 Myanmar Movie AI</h1>
-<p>Chinese / foreign movie dialogue → 🇲🇲 Natural Myanmar SRT → 🎙️ Burmese Voiceover</p>
-<div style="margin-top:12px">
-<span class="badge">🤖 AI Translation</span>
-<span class="badge">⏱️ Auto Timing Check</span>
-<span class="badge">🎙️ 2 Burmese Voices</span>
-<span class="badge">📱 Mobile Friendly</span>
-</div>
-</div>""",
+    """
+    <div class="main-title">
+        <h1>🎬 Myanmar Movie AI</h1>
+        <p>
+            Video → 🇲🇲 Natural Myanmar Subtitle
+            → 🎙️ Burmese Voiceover
+        </p>
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
 
-# =========================================================
+# ============================================================
 # STEP 1
-# =========================================================
+# ============================================================
 
 st.markdown(
-    '<div class="step">'
-    '① 🎥 Video → Myanmar SRT'
-    '</div>',
+    """
+    <div class="section-card">
+        <div class="step-title">
+            1️⃣ Video → မြန်မာ SRT
+        </div>
+    </div>
+    """,
     unsafe_allow_html=True,
-)
-
-st.caption(
-    "AI က dialogue, timestamp နဲ့ translation "
-    "ကို အလိုအလျောက်လုပ်ပေးမယ်။"
 )
 
 video_file = st.file_uploader(
-    "🎥 Movie / Video တင်ပါ",
+    "🎥 Video တင်ပါ",
     type=[
         "mp4",
         "mov",
@@ -1548,7 +1635,7 @@ video_file = st.file_uploader(
 )
 
 make_srt_button = st.button(
-    "🚀 AI SRT စတင်ထုတ်မယ်",
+    "📝 မြန်မာ SRT ထုတ်မယ်",
     type="primary",
     use_container_width=True,
 )
@@ -1557,16 +1644,18 @@ make_srt_button = st.button(
 if make_srt_button:
 
     if not video_file:
+
         st.error(
             "Video တစ်ခုအရင်တင်ပါ။"
         )
+
         st.stop()
 
     try:
 
-        with tempfile.TemporaryDirectory() as temp_dir:
+        with tempfile.TemporaryDirectory() as td:
 
-            work = Path(temp_dir)
+            work = Path(td)
 
             video = (
                 work
@@ -1583,10 +1672,16 @@ if make_srt_button:
             )
 
             status = st.empty()
-            progress_bar = st.progress(0.0)
+            bar = st.progress(
+                0.0
+            )
+
+            # ---------------------------------------------
+            # Extract
+            # ---------------------------------------------
 
             status.info(
-                "🎧 1/3 Audio ကို စစ်နေသည်..."
+                "Video audio ထုတ်နေသည်..."
             )
 
             extract_audio(
@@ -1594,41 +1689,75 @@ if make_srt_button:
                 audio,
             )
 
-            progress_bar.progress(
-                0.15
+            bar.progress(
+                0.12
             )
+
+            # ---------------------------------------------
+            # Deepgram
+            # ---------------------------------------------
 
             status.info(
-                "🗣️ 2/3 Dialogue + timestamp "
-                "ရယူနေသည်..."
+                "AI က စကားလုံးတစ်လုံးချင်း "
+                "timestamp ရယူနေသည်..."
             )
 
-            utterances = (
+            raw_transcript = (
                 deepgram_transcribe(
                     audio
                 )
             )
 
-            progress_bar.progress(
-                0.30
+            bar.progress(
+                0.28
             )
 
+            # ---------------------------------------------
+            # Smart Segmentation
+            # ---------------------------------------------
+
             status.info(
-                "🇲🇲 3/3 Gemini က "
-                "သဘာဝကျမြန်မာလို "
-                "ဘာသာပြန်နေသည်..."
+                "Dialogue တွေကို "
+                "စာတန်းထိုးဖို့ သင့်တော်တဲ့အပိုင်းတွေ "
+                "အလိုအလျောက်ခွဲနေသည်..."
+            )
+
+            subtitle_segments = (
+                build_subtitle_segments(
+                    raw_transcript
+                )
+            )
+
+            bar.progress(
+                0.38
+            )
+
+            # ---------------------------------------------
+            # Translation
+            # ---------------------------------------------
+
+            status.info(
+                "Gemini က မြန်မာလို "
+                "သဘာဝကျကျ ဘာသာပြန်နေသည်..."
             )
 
             segments = build_segments(
                 gemini_client(),
-                utterances,
+                subtitle_segments,
                 lambda p, t: (
-                    progress_bar.progress(
-                        min(p, 0.9)
+                    bar.progress(
+                        min(
+                            p,
+                            0.92,
+                        )
                     ),
                     status.info(t),
                 ),
             )
+
+            # ---------------------------------------------
+            # SRT
+            # ---------------------------------------------
 
             srt = make_srt(
                 segments
@@ -1647,86 +1776,51 @@ if make_srt_button:
                 + "_myanmar.srt"
             )
 
-            st.session_state[
-                "srt_meta"
-            ] = {
-                "lines": len(segments),
-                "file": video_file.name,
-            }
-
-            progress_bar.progress(
+            bar.progress(
                 1.0
             )
 
             status.success(
-                "✅ SRT အောင်မြင်ပါပြီ — "
-                f"{len(segments)} dialogue lines"
+                "SRT ပြီးပါပြီ — "
+                f"{len(segments)} subtitle lines"
             )
 
-    except Exception as error:
+    except Exception as e:
 
         st.error(
-            "SRT ထုတ်ရာမှာ "
-            "အမှားဖြစ်ပါတယ်။"
+            "SRT ထုတ်ရာမှာ အမှားဖြစ်ပါတယ်။"
         )
 
-        st.exception(error)
+        st.exception(e)
 
 
-# =========================================================
-# SRT RESULT
-# =========================================================
+# ============================================================
+# SRT PREVIEW
+# ============================================================
 
 if st.session_state.get(
     "srt_text"
 ):
 
-    metadata = st.session_state.get(
-        "srt_meta",
-        {},
-    )
-
-    st.markdown(
-        '<div class="card">',
-        unsafe_allow_html=True,
-    )
-
-    col1, col2 = st.columns(2)
-
-    col1.metric(
-        "📝 Dialogue",
-        f"{metadata.get('lines', 0)} lines",
-    )
-
-    col2.metric(
-        "🤖 Status",
-        "AI Checked",
-    )
-
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
     st.subheader(
-        "📄 Myanmar SRT Preview"
+        "📄 SRT Preview"
     )
 
     st.text_area(
-        "Preview",
+        "မြန်မာ SRT",
         st.session_state[
             "srt_text"
         ],
-        height=300,
-        disabled=True,
-        label_visibility="collapsed",
+        height=320,
     )
 
     st.download_button(
         "⬇️ Download Myanmar SRT",
         st.session_state[
             "srt_text"
-        ].encode("utf-8-sig"),
+        ].encode(
+            "utf-8-sig"
+        ),
         st.session_state.get(
             "srt_name",
             "myanmar.srt",
@@ -1736,110 +1830,70 @@ if st.session_state.get(
     )
 
 
-# =========================================================
+# ============================================================
 # STEP 2
-# =========================================================
+# ============================================================
 
 st.markdown(
-    '<div class="step">'
-    '② 🎙️ SRT → Myanmar Voiceover'
-    '</div>',
+    """
+    <div class="section-card">
+        <div class="step-title">
+            2️⃣ SRT → မြန်မာ Voiceover
+        </div>
+    </div>
+    """,
     unsafe_allow_html=True,
 )
 
-st.caption(
-    "Voice, style နဲ့ speed ကိုရွေးပါ။ "
-    "Timing / overlap ကို app က "
-    "အလိုအလျောက်စစ်ပြီးညှိပေးမယ်။"
-)
-
 srt_file = st.file_uploader(
-    "📄 SRT တင်ပါ "
-    "(သို့) အဆင့် ၁ ရဲ့ SRT ကိုသုံးပါ",
+    "📄 SRT တင်ပါ",
     type=["srt"],
     key="srt_upload",
 )
 
 
-# =========================================================
-# VOICE SETTINGS FORM
-#
-# IMPORTANT:
-# Slider / selectbox တွေကို form ထဲထည့်ထားတဲ့အတွက်
-# user က slider ကို ရွှေ့ရုံနဲ့ Streamlit rerun မဖြစ်တော့ပါ။
-# "Voiceover စတင်ထုတ်မယ်" ကိုနှိပ်မှ settings submit ဖြစ်မယ်။
-# =========================================================
+# ============================================================
+# VOICE FORM
+# ============================================================
 
 with st.form(
-    "voiceover_settings_form",
-    clear_on_submit=False,
+    "voice_generation_form"
 ):
 
-    voice_col, style_col = st.columns(2)
+    voice_name = st.selectbox(
+        "🎙️ Voice",
+        list(VOICES),
+    )
 
-    with voice_col:
-
-        voice_name = st.selectbox(
-            "🎙️ Voice",
-            list(VOICES.keys()),
-            key="voice_choice",
-        )
-
-    with style_col:
-
-        style = st.selectbox(
-            "🎭 Voice Style",
-            list(VOICE_STYLES.keys()),
-            key="style_choice",
-        )
+    style = st.selectbox(
+        "🎭 Voice Style",
+        list(VOICE_STYLES),
+    )
 
     speed = st.slider(
-        "⚡ Speaking Speed",
+        "⚡ Speed",
         0.70,
         1.30,
         1.00,
         0.05,
-        help=(
-            "နောက်ဆုံး audio timing ကို "
-            "SRT slot ထဲဝင်အောင် app က "
-            "auto-fit လုပ်ပေးမယ်။"
-        ),
     )
 
     output_filename_input = st.text_input(
         "📁 Voice File Name",
         value="myanmar_voiceover",
-        placeholder="ဥပမာ - Movie_Part_01",
-        help=(
-            ".m4a မထည့်လည်းရပါတယ်။ "
-            "App က အလိုအလျောက် .m4a ထည့်ပေးမယ်။"
-        ),
-    )
-
-    voice_description = {
-        "သီဟ (အမျိုးသား)":
-            "👨 Male • clear / natural",
-
-        "နီလာ (အမျိုးသမီး)":
-            "👩 Female • clear / natural",
-    }
-
-    st.info(
-        f"🎙️ Selected: **"
-        f"{voice_description[voice_name]}"
-        f"**  •  🎭 **{style}**  •  "
-        f"⚡ **{speed:.2f}x**"
+        help="ဥပမာ - Movie_Part_01",
     )
 
     make_voice_button = st.form_submit_button(
-        "🎧 Voiceover စတင်ထုတ်မယ်",
+        "🎙️ Voiceover စတင်ထုတ်မယ်",
+        type="primary",
         use_container_width=True,
     )
 
 
-# =========================================================
+# ============================================================
 # VOICEOVER PROCESS
-# =========================================================
+# ============================================================
 
 if make_voice_button:
 
@@ -1870,11 +1924,28 @@ if make_voice_button:
 
         st.error(
             "SRT ဖိုင်တင်ပါ "
-            "(သို့) အဆင့် ၁ မှာ "
-            "SRT အရင်ထုတ်ပါ။"
+            "(သို့) အဆင့် ၁ မှာ SRT အရင်ထုတ်ပါ။"
         )
 
         st.stop()
+
+    # Snapshot settings before processing.
+    # This prevents accidental widget changes
+    # from affecting the running job.
+
+    job_voice = VOICES[
+        voice_name
+    ]
+
+    job_style = style
+
+    job_speed = float(
+        speed
+    )
+
+    job_filename = safe_filename(
+        output_filename_input
+    )
 
     try:
 
@@ -1882,56 +1953,49 @@ if make_voice_button:
             source_srt
         )
 
-        # =================================================
-        # Save submitted settings as immutable job settings
-        # =================================================
+        with tempfile.TemporaryDirectory() as td:
 
-        selected_voice = VOICES[voice_name]
-        selected_style = style
-        selected_speed = float(speed)
-        selected_filename = safe_filename(
-            output_filename_input
-        )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-
-            work = Path(temp_dir)
+            work = Path(td)
 
             status = st.empty()
-            progress_bar = st.progress(0.0)
+
+            bar = st.progress(
+                0.0
+            )
 
             status.info(
-                "🔎 AI/App က SRT timing "
-                "စစ်နေသည်... "
+                "SRT timing စစ်နေသည်... "
                 f"{len(segments)} lines"
             )
 
             voiceover = build_voiceover(
                 segments,
-                selected_voice,
-                selected_style,
-                selected_speed,
+                job_voice,
+                job_style,
+                job_speed,
                 work,
                 lambda p, t: (
-                    progress_bar.progress(
-                        min(p, 1.0)
+                    bar.progress(
+                        min(
+                            p,
+                            1.0,
+                        )
                     ),
                     status.info(t),
                 ),
             )
 
-            voice_bytes = (
+            data = (
                 voiceover.read_bytes()
             )
 
             st.session_state[
                 "voice_bytes"
-            ] = voice_bytes
+            ] = data
 
-            # User selected filename
             st.session_state[
-                "voice_download_name"
-            ] = selected_filename
+                "voice_name"
+            ] = job_filename
 
             st.session_state[
                 "voice_mime"
@@ -1941,50 +2005,30 @@ if make_voice_button:
                 "voice_segments"
             ] = segments
 
-            st.session_state[
-                "voice_selected_name"
-            ] = voice_name
-
-            st.session_state[
-                "voice_selected_style"
-            ] = selected_style
-
-            st.session_state[
-                "voice_selected_speed"
-            ] = selected_speed
-
-            progress_bar.progress(
+            bar.progress(
                 1.0
             )
 
             status.success(
-                "✅ Voiceover ပြီးပါပြီ — "
-                "timing + loudness validation "
-                "လုပ်ပြီးပါပြီ။"
+                "Voiceover ပြီးပါပြီ"
             )
 
-    except Exception as error:
+    except Exception as e:
 
         st.error(
-            "Voiceover ထုတ်ရာမှာ "
-            "အမှားဖြစ်ပါတယ်။"
+            "Voiceover ထုတ်ရာမှာ အမှားဖြစ်ပါတယ်။"
         )
 
-        st.exception(error)
+        st.exception(e)
 
 
-# =========================================================
+# ============================================================
 # VOICEOVER RESULT
-# =========================================================
+# ============================================================
 
 if st.session_state.get(
     "voice_bytes"
 ):
-
-    st.markdown(
-        '<div class="card">',
-        unsafe_allow_html=True,
-    )
 
     st.subheader(
         "🔊 Voiceover Preview"
@@ -2000,18 +2044,13 @@ if st.session_state.get(
         ),
     )
 
-    st.caption(
-        "🔊 Loudness normalized • "
-        "Limiter protected"
-    )
-
     st.download_button(
         "⬇️ Download Voiceover",
         st.session_state[
             "voice_bytes"
         ],
         st.session_state.get(
-            "voice_download_name",
+            "voice_name",
             "myanmar_voiceover.m4a",
         ),
         st.session_state.get(
@@ -2020,23 +2059,3 @@ if st.session_state.get(
         ),
         use_container_width=True,
     )
-
-    st.markdown(
-        "</div>",
-        unsafe_allow_html=True,
-    )
-
-
-# =========================================================
-# FOOTER
-# =========================================================
-
-st.markdown("---")
-
-st.caption(
-    "🔒 Core processing ကိုမပြောင်းထားပါ။ "
-    "ဒီ version မှာ video merge / "
-    "original audio removal မပါပါ။ "
-    "Voice Clone ကို နောက် Phase မှာ "
-    "သီးခြားထည့်နိုင်ပါတယ်။"
-)
