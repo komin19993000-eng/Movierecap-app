@@ -1262,35 +1262,16 @@ def build_voiceover(
 # =========================================================
 
 st.markdown(
-    """
-<div class="hero">
-    <h1>🎬 Myanmar Movie AI</h1>
-
-    <p>
-        Chinese / foreign movie dialogue
-        → 🇲🇲 Natural Myanmar SRT
-        → 🎙️ Burmese Voiceover
-    </p>
-
-    <div style="margin-top:12px">
-        <span class="badge">
-            🤖 AI Translation
-        </span>
-
-        <span class="badge">
-            ⏱️ Auto Timing Check
-        </span>
-
-        <span class="badge">
-            🎙️ 2 Burmese Voices
-        </span>
-
-        <span class="badge">
-            📱 Mobile Friendly
-        </span>
-    </div>
+"""<div class="hero">
+<h1>🎬 Myanmar Movie AI</h1>
+<p>Chinese / foreign movie dialogue → 🇲🇲 Natural Myanmar SRT → 🎙️ Burmese Voiceover</p>
+<div style="margin-top:12px">
+<span class="badge">🤖 AI Translation</span>
+<span class="badge">⏱️ Auto Timing Check</span>
+<span class="badge">🎙️ 2 Burmese Voices</span>
+<span class="badge">📱 Mobile Friendly</span>
 </div>
-""",
+</div>""",
     unsafe_allow_html=True,
 )
 
