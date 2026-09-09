@@ -3010,3 +3010,18 @@ if st.session_state.get(
         st.session_state[
             "editor_result"
         ],
+        st.session_state.get(
+            "editor_result_name",
+            "Myanmar_Final.mp4",
+        ),
+        "video/mp4",
+        use_container_width=True,
+    )
+
+
+st.markdown("---")
+
+st.caption(
+    "🎬 Myanmar Movie AI Studio — "
+    "SRT + Burmese Voiceover + Visual Editor"
+)
