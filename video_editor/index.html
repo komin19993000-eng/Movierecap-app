@@ -2,14 +2,16 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
 
 <style>
 *{
     box-sizing:border-box;
 }
 
-html,body{
+html,
+body{
     margin:0;
     padding:0;
     width:100%;
@@ -19,10 +21,14 @@ html,body{
     overflow-x:hidden;
 }
 
+body{
+    min-height:100%;
+}
+
 #app{
     width:100%;
     max-width:900px;
-    margin:auto;
+    margin:0 auto;
     padding:8px;
 }
 
@@ -34,9 +40,9 @@ html,body{
     position:relative;
     width:100%;
     background:#000;
-    border-radius:10px;
+    border-radius:12px;
     overflow:hidden;
-    user-select:none;
+    line-height:0;
 }
 
 #video{
@@ -48,51 +54,52 @@ html,body{
     width:100%;
     height:auto;
     background:#000;
+    touch-action:none;
 }
 
-/* Overlay for draggable controls */
+/* =========================
+   OVERLAY
+========================= */
+
 .overlay{
     position:absolute;
     inset:0;
     pointer-events:none;
 }
 
-/* =========================
-   EDIT BOX
-========================= */
-
 .box{
     position:absolute;
-    border:2px solid #00e5ff;
-    background:rgba(0,229,255,.12);
+    display:none;
     pointer-events:auto;
     touch-action:none;
-    display:none;
-    min-width:30px;
-    min-height:20px;
+    user-select:none;
+    -webkit-user-select:none;
 }
 
 .mask-box{
-    border-color:#ffcc00;
-    background:rgba(255,204,0,.12);
+    border:2px solid #ffcc00;
+    background:rgba(255,204,0,.15);
+    z-index:10;
 }
 
 .subtitle-box{
-    border-color:#00ff88;
+    border:2px solid #00ff88;
     background:rgba(0,255,136,.08);
     color:#fff;
-    font-size:18px;
+    font-size:24px;
     font-weight:bold;
     text-align:center;
     padding:5px;
     white-space:nowrap;
     overflow:hidden;
+    line-height:1.2;
+    z-index:11;
     text-shadow:
         1px 1px 2px #000,
-        -1px -1px 2px #000;
+        -1px -1px 2px #000,
+        1px -1px 2px #000,
+        -1px 1px 2px #000;
 }
-
-/* resize handles */
 
 .handle{
     position:absolute;
@@ -101,31 +108,28 @@ html,body{
     background:#fff;
     border:2px solid #111;
     border-radius:50%;
-    z-index:10;
+    z-index:20;
+    touch-action:none;
 }
 
 .tl{
     left:-8px;
     top:-8px;
-    cursor:nwse-resize;
 }
 
 .tr{
     right:-8px;
     top:-8px;
-    cursor:nesw-resize;
 }
 
 .bl{
     left:-8px;
     bottom:-8px;
-    cursor:nesw-resize;
 }
 
 .br{
     right:-8px;
     bottom:-8px;
-    cursor:nwse-resize;
 }
 
 /* =========================
@@ -133,32 +137,35 @@ html,body{
 ========================= */
 
 .timeline{
+    width:100%;
     display:flex;
     align-items:center;
     gap:8px;
-    padding:8px 0;
+    padding:10px 0;
 }
 
-.timeline button{
-    width:42px;
-    height:38px;
+.play-button{
+    flex:0 0 54px;
+    width:54px;
+    height:48px;
     border:0;
-    border-radius:8px;
+    border-radius:10px;
     background:#292929;
     color:#fff;
-    font-size:18px;
+    font-size:20px;
+    cursor:pointer;
 }
 
-.timeline input{
+.timeline input[type=range]{
     flex:1;
     min-width:0;
 }
 
-#timeText{
-    width:48px;
+.time-text{
+    flex:0 0 42px;
     text-align:right;
-    font-size:12px;
-    color:#aaa;
+    color:#ccc;
+    font-size:13px;
 }
 
 /* =========================
@@ -166,13 +173,16 @@ html,body{
 ========================= */
 
 .toolbar{
+    width:100%;
     display:flex;
     gap:7px;
     overflow-x:auto;
+    overflow-y:hidden;
     padding:8px 3px;
     background:#1c1c1c;
-    border-radius:10px;
+    border-radius:12px;
     scrollbar-width:none;
+    -webkit-overflow-scrolling:touch;
 }
 
 .toolbar::-webkit-scrollbar{
@@ -180,15 +190,16 @@ html,body{
 }
 
 .tool{
-    flex:0 0 auto;
-    min-width:72px;
-    height:55px;
+    flex:0 0 76px;
+    min-width:76px;
+    height:64px;
     border:0;
-    border-radius:9px;
+    border-radius:10px;
     background:#292929;
     color:#fff;
     font-size:12px;
     cursor:pointer;
+    line-height:1.25;
 }
 
 .tool:active{
@@ -204,30 +215,45 @@ html,body{
 ========================= */
 
 .panel{
+    width:100%;
     margin-top:8px;
     padding:12px;
     background:#1b1b1b;
-    border-radius:10px;
+    border-radius:12px;
 }
 
-.panel b{
-    font-size:15px;
+.panel-title{
+    font-size:18px;
+    font-weight:bold;
+    margin-bottom:10px;
 }
 
 .row{
     display:flex;
-    gap:10px;
     align-items:center;
+    gap:10px;
     margin:10px 0;
 }
 
 .row label{
-    min-width:85px;
-    font-size:13px;
+    flex:0 0 100px;
+    font-size:14px;
 }
 
 .row input[type=range]{
     flex:1;
+    min-width:0;
+}
+
+.row select{
+    flex:1;
+}
+
+.value{
+    flex:0 0 45px;
+    text-align:right;
+    color:#aaa;
+    font-size:13px;
 }
 
 select,
@@ -236,18 +262,33 @@ input[type=text]{
     background:#292929;
     color:#fff;
     border:1px solid #555;
-    border-radius:6px;
+    border-radius:7px;
     padding:9px;
+    font-size:14px;
 }
 
 input[type=range]{
-    width:100%;
+    accent-color:#00a8ff;
 }
 
-button.action{
+.check-row{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    margin:10px 0;
+    font-size:14px;
+}
+
+.small{
+    color:#999;
+    font-size:12px;
+    line-height:1.5;
+}
+
+.action{
     width:100%;
     margin-top:8px;
-    padding:12px;
+    padding:11px;
     border:0;
     border-radius:8px;
     background:#00a86b;
@@ -255,17 +296,14 @@ button.action{
     font-weight:bold;
 }
 
-.small{
+.info{
+    padding:9px;
+    margin-top:8px;
+    border-radius:8px;
+    background:#252525;
+    color:#bbb;
     font-size:12px;
     line-height:1.5;
-    color:#aaa;
-}
-
-.value{
-    width:45px;
-    text-align:right;
-    font-size:12px;
-    color:#aaa;
 }
 
 /* =========================
@@ -275,23 +313,27 @@ button.action{
 @media(max-width:600px){
 
     #app{
-        padding:5px;
+        padding:6px;
     }
 
     .tool{
-        min-width:65px;
-        height:52px;
-        font-size:11px;
-    }
-
-    .panel{
-        padding:10px;
+        flex-basis:72px;
+        min-width:72px;
+        height:62px;
     }
 
     .row label{
-        min-width:75px;
+        flex-basis:85px;
     }
 
+    .subtitle-box{
+        font-size:18px;
+    }
+
+    .handle{
+        width:18px;
+        height:18px;
+    }
 }
 </style>
 </head>
@@ -316,9 +358,7 @@ button.action{
 
         <div class="overlay">
 
-            <div
-                id="maskBox"
-                class="box mask-box">
+            <div id="maskBox" class="box mask-box">
 
                 <div class="handle tl"></div>
                 <div class="handle tr"></div>
@@ -327,13 +367,12 @@ button.action{
 
             </div>
 
-            <div
-                id="subtitleBox"
-                class="box subtitle-box">
+            <div id="subtitleBox" class="box subtitle-box">
 
-                <span id="subtitleTextView">
-                    မြန်မာစာတန်း
-                </span>
+                <div class="handle tl"></div>
+                <div class="handle tr"></div>
+                <div class="handle bl"></div>
+                <div class="handle br"></div>
 
             </div>
 
@@ -341,13 +380,17 @@ button.action{
 
     </div>
 
+
     <!-- =========================
          TIMELINE
     ========================== -->
 
     <div class="timeline">
 
-        <button id="play">
+        <button
+            id="play"
+            class="play-button"
+            type="button">
             ▶️
         </button>
 
@@ -359,137 +402,93 @@ button.action{
             value="0"
             step="0.01">
 
-        <span id="timeText">
+        <span
+            id="timeText"
+            class="time-text">
             0:00
         </span>
 
     </div>
 
+
     <!-- =========================
-         CAPCUT STYLE TOOLBAR
+         TOOLBAR
     ========================== -->
 
     <div class="toolbar">
 
         <button
             class="tool active"
-            data-tool="video">
-            🎬<br>Video
+            data-tool="video"
+            type="button">
+            🎬<br>
+            Video
         </button>
 
         <button
             class="tool"
-            data-tool="mask">
-            🔲<br>Mask
+            data-tool="mask"
+            type="button">
+            🔲<br>
+            Mask
         </button>
 
         <button
             class="tool"
-            data-tool="text">
-            📝<br>Text
+            data-tool="text"
+            type="button">
+            📝<br>
+            Text
         </button>
 
         <button
             class="tool"
-            data-tool="audio">
-            🔊<br>Audio
+            data-tool="audio"
+            type="button">
+            🔊<br>
+            Audio
         </button>
 
         <button
             class="tool"
-            data-tool="music">
-            🎵<br>Music
+            data-tool="music"
+            type="button">
+            🎵<br>
+            Music
         </button>
 
         <button
             class="tool"
-            data-tool="crop">
-            ✂️<br>Ratio
+            data-tool="crop"
+            type="button">
+            ✂️<br>
+            Crop
         </button>
 
         <button
             class="tool"
-            data-tool="flip">
-            🔄<br>Flip
+            data-tool="flip"
+            type="button">
+            🔄<br>
+            Flip
         </button>
 
     </div>
 
+
     <!-- =========================
-         TOOL PANEL
+         CONTROL PANEL
     ========================== -->
 
-    <div id="panel" class="panel"></div>
+    <div
+        id="panel"
+        class="panel">
+    </div>
 
 </div>
 
 
 <script>
-
-/* =========================================================
-   STREAMLIT COMPONENT BRIDGE
-   No external CDN required
-========================================================= */
-
-(function(){
-
-    function post(type,data){
-
-        const message = Object.assign(
-            {
-                isStreamlitMessage:true,
-                type:type
-            },
-            data || {}
-        );
-
-        window.parent.postMessage(
-            message,
-            "*"
-        );
-    }
-
-    window.Streamlit = {
-
-        setComponentReady:function(){
-
-            post(
-                "streamlit:componentReady",
-                {
-                    apiVersion:1
-                }
-            );
-
-        },
-
-        setFrameHeight:function(height){
-
-            post(
-                "streamlit:setFrameHeight",
-                {
-                    height:Number(height) || 650
-                }
-            );
-
-        },
-
-        setComponentValue:function(value){
-
-            post(
-                "streamlit:setComponentValue",
-                {
-                    value:value
-                }
-            );
-
-        },
-
-        RENDER_EVENT:"streamlit:render"
-
-    };
-
-})();
-
 
 /* =========================================================
    ELEMENTS
@@ -513,11 +512,6 @@ const maskBox =
 const subtitleBox =
     document.getElementById("subtitleBox");
 
-const subtitleTextView =
-    document.getElementById(
-        "subtitleTextView"
-    );
-
 const timeSlider =
     document.getElementById("time");
 
@@ -532,7 +526,7 @@ const panel =
 
 
 /* =========================================================
-   EDIT STATE
+   STATE
 ========================================================= */
 
 let state = {
@@ -596,36 +590,31 @@ let state = {
 };
 
 
-/* =========================================================
-   VARIABLES
-========================================================= */
-
 let sourceUrl = "";
 
 let subtitleText = "";
 
-let lastSend = 0;
 
+/*
+ IMPORTANT:
 
-/* =========================================================
-   SEND STATE TO PYTHON
-========================================================= */
+ We do NOT send state to Streamlit
+ while the user is dragging/sliding.
 
-function send(){
+ This prevents Streamlit reruns.
+*/
 
-    const now = Date.now();
+let sendTimer = null;
 
-    if(now - lastSend < 30){
+function sendToStreamlit(){
+
+    if(!window.Streamlit){
         return;
     }
 
-    lastSend = now;
+    clearTimeout(sendTimer);
 
-    if(
-        window.Streamlit &&
-        typeof Streamlit.setComponentValue ===
-        "function"
-    ){
+    sendTimer = setTimeout(()=>{
 
         Streamlit.setComponentValue({
 
@@ -636,20 +625,53 @@ function send(){
 
         });
 
-    }
+    },80);
 
 }
 
 
 /* =========================================================
-   TIME FORMAT
+   FRAME HEIGHT
+========================================================= */
+
+let heightTimer = null;
+
+function updateFrameHeight(){
+
+    if(!window.Streamlit){
+        return;
+    }
+
+    clearTimeout(heightTimer);
+
+    heightTimer = setTimeout(()=>{
+
+        const height = Math.max(
+
+            document.body.scrollHeight,
+
+            document.documentElement.scrollHeight,
+
+            preview.scrollHeight
+
+        ) + 25;
+
+        Streamlit.setFrameHeight(height);
+
+    },50);
+
+}
+
+
+/* =========================================================
+   FORMAT TIME
 ========================================================= */
 
 function fmt(t){
 
     t = Math.max(
         0,
-        Number(t) || 0
+        Number(t || 0)
     );
 
     const m =
@@ -674,61 +696,98 @@ function fmt(t){
 
 function resizeCanvas(){
 
-    const vw =
-        video.videoWidth || 640;
+    if(!video.videoWidth){
+        return;
+    }
 
-    const vh =
-        video.videoHeight || 360;
+    const sourceW =
+        video.videoWidth;
 
-    let w = vw;
+    const sourceH =
+        video.videoHeight;
 
-    let h = vh;
+    let w = sourceW;
+
+    let h = sourceH;
 
 
-    if(state.ratio === "9:16"){
+    /*
+       Keep original dimensions.
+    */
 
-        h =
-            w * 16 / 9;
+    if(state.ratio === "Original"){
+
+        w = sourceW;
+
+        h = sourceH;
 
     }
 
+
+    /*
+       9:16
+    */
+
+    else if(state.ratio === "9:16"){
+
+        w = sourceW;
+
+        h = w * 16 / 9;
+
+    }
+
+
+    /*
+       16:9
+    */
 
     else if(state.ratio === "16:9"){
 
-        h =
-            w * 9 / 16;
+        w = sourceW;
+
+        h = w * 9 / 16;
 
     }
 
 
+    /*
+       1:1
+    */
+
     else if(state.ratio === "1:1"){
+
+        w = sourceW;
 
         h = w;
 
     }
 
 
+    /*
+       4:5
+    */
+
     else if(state.ratio === "4:5"){
 
-        h =
-            w * 5 / 4;
+        w = sourceW;
+
+        h = w * 5 / 4;
 
     }
 
 
     canvas.width =
-        Math.max(
-            2,
-            Math.round(w)
-        );
+        Math.round(w);
 
     canvas.height =
-        Math.max(
-            2,
-            Math.round(h)
-        );
+        Math.round(h);
+
 
     draw();
+
+    updateBoxes();
+
+    updateFrameHeight();
 
 }
 
@@ -741,9 +800,13 @@ function draw(){
 
     if(
         !video.videoWidth ||
-        !video.videoHeight
+        !video.videoHeight ||
+        !canvas.width ||
+        !canvas.height
     ){
+
         return;
+
     }
 
     const w =
@@ -752,6 +815,7 @@ function draw(){
     const h =
         canvas.height;
 
+
     ctx.clearRect(
         0,
         0,
@@ -759,8 +823,9 @@ function draw(){
         h
     );
 
+
     /*
-       Background
+       Black canvas background.
     */
 
     ctx.fillStyle = "#000";
@@ -774,54 +839,25 @@ function draw(){
 
 
     /*
-       Calculate video transform
+       Video transform.
     */
 
+    ctx.save();
+
+
     const scale =
-        Number(state.zoom) || 1;
+        Number(state.zoom || 1);
+
 
     const x =
         w / 2 +
-        (Number(state.posX) / 100) * w;
+        (Number(state.posX || 0) / 100) * w;
+
 
     const y =
         h / 2 +
-        (Number(state.posY) / 100) * h;
+        (Number(state.posY || 0) / 100) * h;
 
-
-    /*
-       Original video size
-    */
-
-    let vw =
-        video.videoWidth *
-        scale;
-
-    let vh =
-        video.videoHeight *
-        scale;
-
-
-    /*
-       Cover canvas when ratio changes
-    */
-
-    if(state.ratio !== "Original"){
-
-        const coverScale =
-            Math.max(
-                w / vw,
-                h / vh
-            );
-
-        vw *= coverScale;
-
-        vh *= coverScale;
-
-    }
-
-
-    ctx.save();
 
     ctx.translate(
         x,
@@ -849,27 +885,33 @@ function draw(){
     }
 
 
+    const vw =
+        video.videoWidth *
+        scale;
+
+
+    const vh =
+        video.videoHeight *
+        scale;
+
+
     ctx.drawImage(
+
         video,
+
         -vw / 2,
+
         -vh / 2,
+
         vw,
+
         vh
+
     );
+
 
     ctx.restore();
 
-
-    /*
-       Preview mask effect
-    */
-
-    drawMaskPreview();
-
-
-    /*
-       Update draggable boxes
-    */
 
     updateBoxes();
 
@@ -877,210 +919,7 @@ function draw(){
 
 
 /* =========================================================
-   MASK PREVIEW
-========================================================= */
-
-function drawMaskPreview(){
-
-    if(
-        !state.mask ||
-        !state.mask.enabled
-    ){
-        return;
-    }
-
-    const x =
-        Math.round(
-            state.mask.x *
-            canvas.width
-        );
-
-    const y =
-        Math.round(
-            state.mask.y *
-            canvas.height
-        );
-
-    const w =
-        Math.round(
-            state.mask.w *
-            canvas.width
-        );
-
-    const h =
-        Math.round(
-            state.mask.h *
-            canvas.height
-        );
-
-
-    if(
-        w <= 0 ||
-        h <= 0
-    ){
-        return;
-    }
-
-
-    /*
-       SOLID
-    */
-
-    if(
-        state.mask.type ===
-        "solid"
-    ){
-
-        if(!state.mask.invert){
-
-            ctx.fillStyle =
-                "rgba(0,0,0,.90)";
-
-            ctx.fillRect(
-                x,
-                y,
-                w,
-                h
-            );
-
-        }
-        else{
-
-            ctx.save();
-
-            ctx.fillStyle =
-                "rgba(0,0,0,.65)";
-
-            ctx.fillRect(
-                0,
-                0,
-                canvas.width,
-                canvas.height
-            );
-
-            ctx.globalCompositeOperation =
-                "destination-out";
-
-            ctx.fillRect(
-                x,
-                y,
-                w,
-                h
-            );
-
-            ctx.restore();
-
-        }
-
-        return;
-
-    }
-
-
-    /*
-       BLUR
-    */
-
-    if(
-        state.mask.type ===
-        "blur"
-    ){
-
-        /*
-           Canvas preview uses a light visual
-           approximation. Final rendering is
-           performed by Python/FFmpeg.
-        */
-
-        ctx.save();
-
-        ctx.fillStyle =
-            "rgba(180,180,180,.30)";
-
-        ctx.fillRect(
-            x,
-            y,
-            w,
-            h
-        );
-
-        ctx.strokeStyle =
-            "rgba(255,255,255,.25)";
-
-        ctx.strokeRect(
-            x,
-            y,
-            w,
-            h
-        );
-
-        ctx.restore();
-
-        return;
-
-    }
-
-
-    /*
-       MOSAIC
-    */
-
-    if(
-        state.mask.type ===
-        "mosaic"
-    ){
-
-        ctx.save();
-
-        ctx.fillStyle =
-            "rgba(120,120,120,.40)";
-
-        ctx.fillRect(
-            x,
-            y,
-            w,
-            h
-        );
-
-
-        const block = 12;
-
-        ctx.fillStyle =
-            "rgba(255,255,255,.12)";
-
-
-        for(
-            let yy=y;
-            yy<y+h;
-            yy+=block
-        ){
-
-            for(
-                let xx=x;
-                xx<x+w;
-                xx+=block
-            ){
-
-                ctx.fillRect(
-                    xx,
-                    yy,
-                    block/2,
-                    block/2
-                );
-
-            }
-
-        }
-
-        ctx.restore();
-
-    }
-
-}
-
-
-/* =========================================================
-   UPDATE OVERLAY BOXES
+   OVERLAY BOXES
 ========================================================= */
 
 function updateBoxes(){
@@ -1088,22 +927,8 @@ function updateBoxes(){
     const rect =
         canvas.getBoundingClientRect();
 
-    if(
-        !rect.width ||
-        !rect.height
-    ){
-        return;
-    }
 
-
-    /*
-       MASK
-    */
-
-    if(
-        state.mask &&
-        state.mask.enabled
-    ){
+    if(state.mask.enabled){
 
         maskBox.style.display =
             "block";
@@ -1133,6 +958,7 @@ function updateBoxes(){
             ) + "px";
 
     }
+
     else{
 
         maskBox.style.display =
@@ -1141,17 +967,11 @@ function updateBoxes(){
     }
 
 
-    /*
-       SUBTITLE
-    */
-
-    if(
-        state.subtitle &&
-        state.subtitle.enabled
-    ){
+    if(state.subtitle.enabled){
 
         subtitleBox.style.display =
             "block";
+
 
         subtitleBox.style.left =
             (
@@ -1162,6 +982,7 @@ function updateBoxes(){
                 rect.width
             ) + "px";
 
+
         subtitleBox.style.top =
             (
                 (
@@ -1171,11 +992,13 @@ function updateBoxes(){
                 rect.height
             ) + "px";
 
+
         subtitleBox.style.width =
             (
                 state.subtitle.w *
                 rect.width
             ) + "px";
+
 
         subtitleBox.style.height =
             (
@@ -1183,19 +1006,20 @@ function updateBoxes(){
                 rect.height
             ) + "px";
 
-        subtitleTextView.textContent =
+
+        subtitleBox.innerText =
             subtitleText ||
             "မြန်မာစာတန်း";
+
 
         subtitleBox.style.fontSize =
             Math.max(
                 12,
-                Number(
-                    state.subtitle.size
-                ) || 24
+                Number(state.subtitle.size)
             ) + "px";
 
     }
+
     else{
 
         subtitleBox.style.display =
@@ -1212,17 +1036,19 @@ function updateBoxes(){
 
 video.addEventListener(
     "loadedmetadata",
-    function(){
+    ()=>{
 
         state.trimEnd =
-            video.duration || 0;
+            Number(video.duration || 0);
 
         timeSlider.max =
-            video.duration || 1;
+            Number(video.duration || 1);
 
         resizeCanvas();
 
-        send();
+        updateFrameHeight();
+
+        sendToStreamlit();
 
     }
 );
@@ -1230,7 +1056,7 @@ video.addEventListener(
 
 video.addEventListener(
     "timeupdate",
-    function(){
+    ()=>{
 
         if(!video.seeking){
 
@@ -1239,7 +1065,7 @@ video.addEventListener(
 
         }
 
-        timeText.textContent =
+        timeText.innerText =
             fmt(video.currentTime);
 
         draw();
@@ -1250,9 +1076,9 @@ video.addEventListener(
 
 video.addEventListener(
     "play",
-    function(){
+    ()=>{
 
-        playButton.textContent =
+        playButton.innerText =
             "⏸️";
 
     }
@@ -1261,63 +1087,75 @@ video.addEventListener(
 
 video.addEventListener(
     "pause",
-    function(){
+    ()=>{
 
-        playButton.textContent =
+        playButton.innerText =
             "▶️";
-
-        send();
 
     }
 );
 
 
 /* =========================================================
-   PLAY / PAUSE
+   PLAY BUTTON
 ========================================================= */
 
-playButton.onclick =
-    function(){
+playButton.addEventListener(
+    "click",
+    ()=>{
 
         if(video.paused){
 
-            video.play()
-                .catch(function(){});
+            video.play();
 
         }
+
         else{
 
             video.pause();
 
         }
 
-    };
+    }
+);
 
 
 /* =========================================================
    TIMELINE
 ========================================================= */
 
-timeSlider.oninput =
-    function(){
+timeSlider.addEventListener(
+    "input",
+    ()=>{
 
         video.currentTime =
-            Number(
-                timeSlider.value
-            );
+            Number(timeSlider.value);
 
-        timeText.textContent =
+        timeText.innerText =
             fmt(video.currentTime);
 
         draw();
 
-        send();
+        /*
+           NO Streamlit rerun here.
+        */
 
-    };
+    }
+);
+
+
+timeSlider.addEventListener(
+    "change",
+    ()=>{
+
+        sendToStreamlit();
+
+    }
+);
 
 
 /* =========================================================
-   DRAG / RESIZE SYSTEM
+   DRAG / RESIZE
 ========================================================= */
 
 function setupDrag(
@@ -1336,17 +1174,24 @@ function setupDrag(
 
     box.addEventListener(
         "pointerdown",
-        function(e){
+        e=>{
 
             e.preventDefault();
 
-            box.setPointerCapture(
-                e.pointerId
-            );
+            e.stopPropagation();
+
+            try{
+
+                box.setPointerCapture(
+                    e.pointerId
+                );
+
+            }catch(err){}
 
 
             const rect =
                 canvas.getBoundingClientRect();
+
 
             startX =
                 e.clientX;
@@ -1362,6 +1207,7 @@ function setupDrag(
                 };
 
             }
+
             else{
 
                 original = {
@@ -1383,48 +1229,67 @@ function setupDrag(
 
                 let corner = "";
 
+
                 if(
                     target.classList.contains(
                         "tl"
                     )
                 ){
+
                     corner = "tl";
+
                 }
+
 
                 if(
                     target.classList.contains(
                         "tr"
                     )
                 ){
+
                     corner = "tr";
+
                 }
+
 
                 if(
                     target.classList.contains(
                         "bl"
                     )
                 ){
+
                     corner = "bl";
+
                 }
+
 
                 if(
                     target.classList.contains(
                         "br"
                     )
                 ){
+
                     corner = "br";
+
                 }
 
+
                 action = {
+
                     mode:"resize",
+
                     corner:corner
+
                 };
 
             }
+
             else{
 
                 action = {
+
                     mode:"move"
+
                 };
 
             }
@@ -1435,11 +1300,14 @@ function setupDrag(
 
     box.addEventListener(
         "pointermove",
-        function(e){
+        e=>{
 
             if(!action){
                 return;
             }
+
+
+            e.preventDefault();
 
 
             const rect =
@@ -1447,10 +1315,12 @@ function setupDrag(
 
 
             if(
-                !rect.width ||
-                !rect.height
+                rect.width <= 0 ||
+                rect.height <= 0
             ){
+
                 return;
+
             }
 
 
@@ -1460,6 +1330,7 @@ function setupDrag(
                     startX
                 ) /
                 rect.width;
+
 
             const dy =
                 (
@@ -1475,13 +1346,12 @@ function setupDrag(
                 : state.subtitle;
 
 
-            /*
+            /* =========================
                MOVE
-            */
+            ========================== */
 
             if(
-                action.mode ===
-                "move"
+                action.mode === "move"
             ){
 
                 if(type === "mask"){
@@ -1495,6 +1365,7 @@ function setupDrag(
                             )
                         );
 
+
                     obj.y =
                         Math.max(
                             0,
@@ -1505,6 +1376,7 @@ function setupDrag(
                         );
 
                 }
+
                 else{
 
                     obj.x =
@@ -1515,6 +1387,7 @@ function setupDrag(
                                 original.x + dx
                             )
                         );
+
 
                     obj.y =
                         Math.max(
@@ -1530,14 +1403,15 @@ function setupDrag(
             }
 
 
-            /*
+            /* =========================
                RESIZE
-            */
+            ========================== */
 
             else{
 
                 const min =
                     0.03;
+
 
                 let x =
                     original.x;
@@ -1553,44 +1427,39 @@ function setupDrag(
 
 
                 /*
-                   LEFT
+                   Left
                 */
 
                 if(
-                    action.corner.includes(
-                        "l"
-                    )
+                    action.corner.includes("l")
                 ){
-
-                    const right =
-                        original.x +
-                        original.w;
 
                     const nx =
                         Math.max(
                             0,
                             Math.min(
-                                right - min,
-                                original.x + dx
+                                x + w - min,
+                                x + dx
                             )
                         );
 
-                    x = nx;
-
                     w =
-                        right - nx;
+                        w - (
+                            nx - x
+                        );
+
+                    x =
+                        nx;
 
                 }
 
 
                 /*
-                   RIGHT
+                   Right
                 */
 
                 if(
-                    action.corner.includes(
-                        "r"
-                    )
+                    action.corner.includes("r")
                 ){
 
                     w =
@@ -1606,44 +1475,39 @@ function setupDrag(
 
 
                 /*
-                   TOP
+                   Top
                 */
 
                 if(
-                    action.corner.includes(
-                        "t"
-                    )
+                    action.corner.includes("t")
                 ){
-
-                    const bottom =
-                        original.y +
-                        original.h;
 
                     const ny =
                         Math.max(
                             0,
                             Math.min(
-                                bottom - min,
-                                original.y + dy
+                                y + h - min,
+                                y + dy
                             )
                         );
 
-                    y = ny;
-
                     h =
-                        bottom - ny;
+                        h - (
+                            ny - y
+                        );
+
+                    y =
+                        ny;
 
                 }
 
 
                 /*
-                   BOTTOM
+                   Bottom
                 */
 
                 if(
-                    action.corner.includes(
-                        "b"
-                    )
+                    action.corner.includes("b")
                 ){
 
                     h =
@@ -1671,33 +1535,46 @@ function setupDrag(
 
             updateBoxes();
 
-            draw();
 
-            send();
+            /*
+               DO NOT send to Streamlit
+               while dragging.
+            */
 
         }
     );
 
 
+    function finishPointer(){
+
+        if(!action){
+            return;
+        }
+
+        action = null;
+
+        sendToStreamlit();
+
+        updateFrameHeight();
+
+    }
+
+
     box.addEventListener(
         "pointerup",
-        function(){
-
-            action = null;
-
-            send();
-
-        }
+        finishPointer
     );
 
 
     box.addEventListener(
         "pointercancel",
-        function(){
+        finishPointer
+    );
 
-            action = null;
 
-        }
+    box.addEventListener(
+        "lostpointercapture",
+        finishPointer
     );
 
 }
@@ -1707,6 +1584,7 @@ setupDrag(
     maskBox,
     "mask"
 );
+
 
 setupDrag(
     subtitleBox,
@@ -1719,73 +1597,80 @@ setupDrag(
 ========================================================= */
 
 document
-    .querySelectorAll(".tool")
-    .forEach(
-        function(btn){
+.querySelectorAll(".tool")
+.forEach(
+    btn=>{
 
-            btn.onclick =
-                function(){
+        btn.addEventListener(
+            "click",
+            ()=>{
 
-                    document
-                        .querySelectorAll(
-                            ".tool"
-                        )
-                        .forEach(
-                            function(x){
-
-                                x.classList.remove(
-                                    "active"
-                                );
-
-                            }
+                document
+                .querySelectorAll(".tool")
+                .forEach(
+                    x=>{
+                        x.classList.remove(
+                            "active"
                         );
+                    }
+                );
 
-                    btn.classList.add(
-                        "active"
-                    );
 
-                    showPanel(
-                        btn.dataset.tool
-                    );
+                btn.classList.add(
+                    "active"
+                );
 
-                };
 
-        }
-    );
+                showPanel(
+                    btn.dataset.tool
+                );
+
+
+                updateFrameHeight();
+
+            }
+        );
+
+    }
+);
 
 
 /* =========================================================
-   VIDEO PANEL
+   PANEL
 ========================================================= */
 
 function showPanel(tool){
 
 
-    /* =====================
+    /* =====================================================
        VIDEO
-    ====================== */
+    ===================================================== */
 
     if(tool === "video"){
 
         panel.innerHTML = `
 
-            <b>🎬 Video</b>
+            <div class="panel-title">
+                🎬 Video
+            </div>
 
             <div class="row">
 
-                <label>Zoom</label>
+                <label>
+                    Zoom
+                </label>
 
                 <input
                     id="zoom"
                     type="range"
-                    min=".5"
-                    max="3"
-                    step=".01"
+                    min="0.5"
+                    max="2.5"
+                    step="0.01"
                     value="${state.zoom}">
 
                 <span
-                    class="value"
-                    id="zoomValue">
+                    id="zoomValue"
+                    class="value">
                     ${Number(state.zoom).toFixed(2)}
                 </span>
 
@@ -1794,116 +1679,175 @@ function showPanel(tool){
 
             <div class="row">
 
-                <label>X Position</label>
+                <label>
+                    X Position
+                </label>
 
                 <input
                     id="px"
                     type="range"
                     min="-50"
                     max="50"
-                    step=".1"
+                    step="1"
                     value="${state.posX}">
+
+                <span
+                    id="pxValue"
+                    class="value">
+                    ${state.posX}
+                </span>
 
             </div>
 
 
             <div class="row">
 
-                <label>Y Position</label>
+                <label>
+                    Y Position
+                </label>
 
                 <input
                     id="py"
                     type="range"
                     min="-50"
                     max="50"
-                    step=".1"
+                    step="1"
                     value="${state.posY}">
 
+                <span
+                    id="pyValue"
+                    class="value">
+                    ${state.posY}
+                </span>
+
             </div>
 
-            <div class="small">
-                Zoom / Position ပြောင်းတာကို
-                Video Preview ပေါ်မှာ ချက်ချင်းမြင်ရပါမယ်။
-            </div>
 
+            <div class="info">
+                Zoom / Position ကို ပြင်နေချိန်
+                Video Preview မှာ ချက်ချင်းမြင်ရမယ်။
+                Streamlit ကို ပြန်မ reload လုပ်ပါ။
+            </div>
         `;
 
 
-        document.getElementById(
-            "zoom"
-        ).oninput =
-            function(e){
+        const zoom =
+            document.getElementById(
+                "zoom"
+            );
+
+        const px =
+            document.getElementById(
+                "px"
+            );
+
+        const py =
+            document.getElementById(
+                "py"
+            );
+
+
+        zoom.addEventListener(
+            "input",
+            e=>{
 
                 state.zoom =
-                    Number(
-                        e.target.value
-                    );
+                    Number(e.target.value);
 
                 document.getElementById(
                     "zoomValue"
-                ).textContent =
+                ).innerText =
                     state.zoom.toFixed(2);
 
                 draw();
 
-                send();
+            }
+        );
 
-            };
+
+        zoom.addEventListener(
+            "change",
+            ()=>{
+                sendToStreamlit();
+            }
+        );
 
 
-        document.getElementById(
-            "px"
-        ).oninput =
-            function(e){
+        px.addEventListener(
+            "input",
+            e=>{
 
                 state.posX =
-                    Number(
-                        e.target.value
-                    );
+                    Number(e.target.value);
+
+                document.getElementById(
+                    "pxValue"
+                ).innerText =
+                    state.posX;
 
                 draw();
 
-                send();
+            }
+        );
 
-            };
+
+        px.addEventListener(
+            "change",
+            ()=>{
+                sendToStreamlit();
+            }
+        );
 
 
-        document.getElementById(
-            "py"
-        ).oninput =
-            function(e){
+        py.addEventListener(
+            "input",
+            e=>{
 
                 state.posY =
-                    Number(
-                        e.target.value
-                    );
+                    Number(e.target.value);
+
+                document.getElementById(
+                    "pyValue"
+                ).innerText =
+                    state.posY;
 
                 draw();
 
-                send();
+            }
+        );
 
-            };
 
-        return;
+        py.addEventListener(
+            "change",
+            ()=>{
+                sendToStreamlit();
+            }
+        );
 
     }
 
 
-    /* =====================
+    /* =====================================================
        MASK
-    ====================== */
+    ===================================================== */
 
-    if(tool === "mask"){
+    else if(tool === "mask"){
 
         state.mask.enabled = true;
 
+
         panel.innerHTML = `
 
-            <b>🔲 Mask</b>
+            <div class="panel-title">
+                🔲 Mask
+            </div>
+
 
             <div class="row">
 
-                <label>Type</label>
+                <label>
+                    Type
+                </label>
 
                 <select id="maskType">
 
@@ -1924,269 +1868,204 @@ function showPanel(tool){
             </div>
 
 
-            <div class="row">
+            <div class="check-row">
 
-                <label>
+                <input
+                    id="invert"
+                    type="checkbox">
 
-                    <input
-                        id="invert"
-                        type="checkbox">
-
+                <label for="invert">
                     Invert
-
                 </label>
 
             </div>
 
 
-            <button
-                id="maskReset"
-                class="action">
+            <div class="info">
 
-                🔄 Reset Mask
+                🟨 အဝါရောင် Box ကို Video
+                ပေါ်မှာ လက်နဲ့ဆွဲရွှေ့နိုင်ပါတယ်။<br><br>
 
-            </button>
+                ⚪ Corner 4 ခုကို ဆွဲပြီး
+                အရွယ်အစား ချိန်နိုင်ပါတယ်။<br><br>
 
-
-            <div class="small">
-
-                🟨 အဝါရောင် Mask Box ကို
-                Video ပေါ်မှာ လက်နဲ့ဆွဲပြီး
                 Chinese subtitle နေရာကို
-                တိုက်ရိုက်ထားနိုင်ပါတယ်။
-
-                <br><br>
-
-                ထောင့်က အဖြူရောင်စက်တွေကို
-                ဆွဲပြီး အရွယ်အစား
-                ကြီး/သေး ပြောင်းနိုင်ပါတယ်။
+                Box နဲ့ ဖုံးနိုင်ပါတယ်။
 
             </div>
-
         `;
 
 
-        document.getElementById(
-            "maskType"
-        ).value =
+        const maskType =
+            document.getElementById(
+                "maskType"
+            );
+
+
+        const invert =
+            document.getElementById(
+                "invert"
+            );
+
+
+        maskType.value =
             state.mask.type;
 
 
-        document.getElementById(
-            "maskType"
-        ).onchange =
-            function(e){
+        invert.checked =
+            state.mask.invert;
+
+
+        maskType.addEventListener(
+            "change",
+            e=>{
 
                 state.mask.type =
                     e.target.value;
 
-                draw();
+                sendToStreamlit();
 
-                send();
-
-            };
-
-
-        document.getElementById(
-            "invert"
-        ).checked =
-            state.mask.invert;
+            }
+        );
 
 
-        document.getElementById(
-            "invert"
-        ).onchange =
-            function(e){
+        invert.addEventListener(
+            "change",
+            e=>{
 
                 state.mask.invert =
                     e.target.checked;
 
-                draw();
+                sendToStreamlit();
 
-                send();
-
-            };
-
-
-        document.getElementById(
-            "maskReset"
-        ).onclick =
-            function(){
-
-                state.mask = {
-
-                    enabled:true,
-
-                    type:"blur",
-
-                    invert:false,
-
-                    x:.05,
-
-                    y:.75,
-
-                    w:.90,
-
-                    h:.18
-
-                };
-
-                draw();
-
-                send();
-
-            };
+            }
+        );
 
 
         updateBoxes();
 
-        draw();
-
-        return;
-
     }
 
 
-    /* =====================
-       TEXT / SUBTITLE
-    ====================== */
+    /* =====================================================
+       TEXT
+    ===================================================== */
 
-    if(tool === "text"){
+    else if(tool === "text"){
 
-        state.subtitle.enabled =
-            true;
+        state.subtitle.enabled = true;
+
 
         panel.innerHTML = `
 
-            <b>📝 Subtitle</b>
+            <div class="panel-title">
+                📝 Subtitle
+            </div>
+
 
             <div class="row">
 
-                <label>Size</label>
+                <label>
+                    Size
+                </label>
 
                 <input
                     id="subSize"
                     type="range"
                     min="12"
                     max="80"
+                    step="1"
                     value="${state.subtitle.size}">
 
                 <span
-                    class="value"
-                    id="subSizeValue">
-
-                    ${state.subtitle.size}px
-
+                    id="subSizeValue"
+                    class="value">
+                    ${state.subtitle.size}
                 </span>
 
             </div>
 
 
-            <button
-                id="subReset"
-                class="action">
+            <div class="info">
 
-                🔄 Reset Subtitle
+                🟩 Subtitle Box ကို Video
+                ပေါ်မှာ လက်နဲ့ဆွဲရွှေ့နိုင်ပါတယ်။<br><br>
 
-            </button>
-
-
-            <div class="small">
-
-                🟩 အစိမ်းရောင် Subtitle Box ကို
-                Video ပေါ်မှာ လက်နဲ့ဆွဲပြီး
-                လိုချင်တဲ့နေရာကို တိုက်ရိုက်ထားနိုင်ပါတယ်။
+                ⚪ Corner တွေကိုဆွဲပြီး
+                အကျယ် / အမြင့် ချိန်နိုင်ပါတယ်။
 
             </div>
-
         `;
 
 
-        document.getElementById(
-            "subSize"
-        ).oninput =
-            function(e){
+        const size =
+            document.getElementById(
+                "subSize"
+            );
+
+
+        size.addEventListener(
+            "input",
+            e=>{
 
                 state.subtitle.size =
-                    Number(
-                        e.target.value
-                    );
+                    Number(e.target.value);
 
                 document.getElementById(
                     "subSizeValue"
-                ).textContent =
-                    state.subtitle.size +
-                    "px";
+                ).innerText =
+                    state.subtitle.size;
 
                 updateBoxes();
 
-                send();
+            }
+        );
 
-            };
 
-
-        document.getElementById(
-            "subReset"
-        ).onclick =
-            function(){
-
-                state.subtitle = {
-
-                    enabled:true,
-
-                    x:.5,
-
-                    y:.85,
-
-                    w:.85,
-
-                    h:.12,
-
-                    size:24
-
-                };
-
-                updateBoxes();
-
-                send();
-
-            };
+        size.addEventListener(
+            "change",
+            ()=>{
+                sendToStreamlit();
+            }
+        );
 
 
         updateBoxes();
 
-        return;
-
     }
 
 
-    /* =====================
+    /* =====================================================
        AUDIO
-    ====================== */
+    ===================================================== */
 
-    if(tool === "audio"){
+    else if(tool === "audio"){
 
         panel.innerHTML = `
 
-            <b>🔊 Audio</b>
+            <div class="panel-title">
+                🔊 Audio
+            </div>
+
 
             <div class="row">
 
-                <label>Original</label>
+                <label>
+                    Original
+                </label>
 
                 <input
                     id="orig"
                     type="range"
                     min="0"
                     max="100"
+                    step="1"
                     value="${state.originalVolume}">
 
                 <span
-                    class="value"
-                    id="origValue">
-
+                    id="origValue"
+                    class="value">
                     ${state.originalVolume}%
-
                 </span>
 
             </div>
@@ -2194,152 +2073,183 @@ function showPanel(tool){
 
             <div class="row">
 
-                <label>Voiceover</label>
+                <label>
+                    Voiceover
+                </label>
 
                 <input
                     id="voice"
                     type="range"
                     min="0"
                     max="150"
+                    step="1"
                     value="${state.voiceVolume}">
 
                 <span
-                    class="value"
-                    id="voiceValue">
-
+                    id="voiceValue"
+                    class="value">
                     ${state.voiceVolume}%
-
                 </span>
 
             </div>
-
         `;
 
 
-        document.getElementById(
-            "orig"
-        ).oninput =
-            function(e){
+        const orig =
+            document.getElementById(
+                "orig"
+            );
+
+
+        const voice =
+            document.getElementById(
+                "voice"
+            );
+
+
+        orig.addEventListener(
+            "input",
+            e=>{
 
                 state.originalVolume =
-                    Number(
-                        e.target.value
-                    );
+                    Number(e.target.value);
 
                 document.getElementById(
                     "origValue"
-                ).textContent =
-                    state.originalVolume +
-                    "%";
+                ).innerText =
+                    state.originalVolume + "%";
 
-                send();
-
-            };
+            }
+        );
 
 
-        document.getElementById(
-            "voice"
-        ).oninput =
-            function(e){
+        orig.addEventListener(
+            "change",
+            ()=>{
+                sendToStreamlit();
+            }
+        );
+
+
+        voice.addEventListener(
+            "input",
+            e=>{
 
                 state.voiceVolume =
-                    Number(
-                        e.target.value
-                    );
+                    Number(e.target.value);
 
                 document.getElementById(
                     "voiceValue"
-                ).textContent =
-                    state.voiceVolume +
-                    "%";
+                ).innerText =
+                    state.voiceVolume + "%";
 
-                send();
+            }
+        );
 
-            };
 
-        return;
+        voice.addEventListener(
+            "change",
+            ()=>{
+                sendToStreamlit();
+            }
+        );
 
     }
 
 
-    /* =====================
+    /* =====================================================
        MUSIC
-    ====================== */
+    ===================================================== */
 
-    if(tool === "music"){
+    else if(tool === "music"){
 
         panel.innerHTML = `
 
-            <b>🎵 Background Music</b>
+            <div class="panel-title">
+                🎵 Background Music
+            </div>
+
 
             <div class="row">
 
-                <label>Volume</label>
+                <label>
+                    Volume
+                </label>
 
                 <input
                     id="music"
                     type="range"
                     min="0"
                     max="80"
+                    step="1"
                     value="${state.musicVolume}">
 
                 <span
-                    class="value"
-                    id="musicValue">
-
+                    id="musicValue"
+                    class="value">
                     ${state.musicVolume}%
-
                 </span>
 
             </div>
 
-            <div class="small">
 
-                Background music file ကို
-                Final Render အချိန်မှာ
-                Python side က အသုံးပြုနိုင်ပါတယ်။
-
+            <div class="info">
+                Background music volume ကို
+                ဒီနေရာကနေ ချိန်နိုင်ပါတယ်။
             </div>
-
         `;
 
 
-        document.getElementById(
-            "music"
-        ).oninput =
-            function(e){
+        const music =
+            document.getElementById(
+                "music"
+            );
+
+
+        music.addEventListener(
+            "input",
+            e=>{
 
                 state.musicVolume =
-                    Number(
-                        e.target.value
-                    );
+                    Number(e.target.value);
 
                 document.getElementById(
                     "musicValue"
-                ).textContent =
-                    state.musicVolume +
-                    "%";
+                ).innerText =
+                    state.musicVolume + "%";
 
-                send();
+            }
+        );
 
-            };
 
-        return;
+        music.addEventListener(
+            "change",
+            ()=>{
+                sendToStreamlit();
+            }
+        );
 
     }
 
 
-    /* =====================
+    /* =====================================================
        CROP / RATIO
-    ====================== */
+    ===================================================== */
 
-    if(tool === "crop"){
+    else if(tool === "crop"){
 
         panel.innerHTML = `
 
-            <b>📐 Canvas / Ratio</b>
+            <div class="panel-title">
+                ✂️ Ratio / Canvas
+            </div>
+
 
             <div class="row">
+
+                <label>
+                    Ratio
+                </label>
 
                 <select id="ratio">
 
@@ -2348,15 +2258,15 @@ function showPanel(tool){
                     </option>
 
                     <option value="9:16">
-                        9:16 Vertical
+                        9:16
                     </option>
 
                     <option value="16:9">
-                        16:9 Landscape
+                        16:9
                     </option>
 
                     <option value="1:1">
-                        1:1 Square
+                        1:1
                     </option>
 
                     <option value="4:5">
@@ -2367,55 +2277,60 @@ function showPanel(tool){
 
             </div>
 
-            <div class="small">
 
-                Ratio ပြောင်းတာနဲ့
-                Video Preview Canvas လည်း
-                ချက်ချင်းပြောင်းပါမယ်။
+            <div class="info">
+
+                📱 TikTok / Shorts / Reels
+                အတွက် 9:16 ကိုသုံးနိုင်ပါတယ်။
 
             </div>
-
         `;
 
 
-        document.getElementById(
-            "ratio"
-        ).value =
+        const ratio =
+            document.getElementById(
+                "ratio"
+            );
+
+
+        ratio.value =
             state.ratio;
 
 
-        document.getElementById(
-            "ratio"
-        ).onchange =
-            function(e){
+        ratio.addEventListener(
+            "change",
+            e=>{
 
                 state.ratio =
                     e.target.value;
 
                 resizeCanvas();
 
-                send();
+                sendToStreamlit();
 
-            };
-
-        return;
+            }
+        );
 
     }
 
 
-    /* =====================
+    /* =====================================================
        FLIP
-    ====================== */
+    ===================================================== */
 
-    if(tool === "flip"){
+    else if(tool === "flip"){
 
         panel.innerHTML = `
 
-            <b>🔄 Flip Video</b>
+            <div class="panel-title">
+                🔄 Flip
+            </div>
+
 
             <button
                 id="flipH"
-                class="action">
+                class="action"
+                type="button">
 
                 ↔️ Flip Horizontal
 
@@ -2424,70 +2339,79 @@ function showPanel(tool){
 
             <button
                 id="flipV"
-                class="action">
+                class="action"
+                type="button">
 
                 ↕️ Flip Vertical
 
             </button>
 
+
+            <div class="info">
+                Flip လုပ်တာကို Video Preview
+                မှာ ချက်ချင်းမြင်နိုင်ပါတယ်။
+            </div>
         `;
 
 
-        document.getElementById(
-            "flipH"
-        ).onclick =
-            function(){
+        document
+        .getElementById("flipH")
+        .addEventListener(
+            "click",
+            ()=>{
 
                 state.flipH =
                     !state.flipH;
 
                 draw();
 
-                send();
+                sendToStreamlit();
 
-            };
+            }
+        );
 
 
-        document.getElementById(
-            "flipV"
-        ).onclick =
-            function(){
+        document
+        .getElementById("flipV")
+        .addEventListener(
+            "click",
+            ()=>{
 
                 state.flipV =
                     !state.flipV;
 
                 draw();
 
-                send();
+                sendToStreamlit();
 
-            };
-
-        return;
+            }
+        );
 
     }
+
+
+    updateFrameHeight();
 
 }
 
 
 /* =========================================================
-   STREAMLIT → JAVASCRIPT
+   RECEIVE DATA FROM PYTHON
 ========================================================= */
 
-function receiveStreamlitRender(
-    event
-){
-
-    if(!event){
-        return;
-    }
-
+function receive(event){
 
     const data =
         event.detail || {};
 
 
+    if(!data.args){
+        return;
+    }
+
+
     const args =
-        data.args || {};
+        data.args;
 
 
     /*
@@ -2497,8 +2421,7 @@ function receiveStreamlitRender(
     if(args.video){
 
         if(
-            sourceUrl !==
-            args.video
+            sourceUrl !== args.video
         ){
 
             sourceUrl =
@@ -2526,10 +2449,6 @@ function receiveStreamlitRender(
         subtitleText =
             args.subtitle;
 
-        subtitleTextView.textContent =
-            subtitleText ||
-            "မြန်မာစာတန်း";
-
         updateBoxes();
 
     }
@@ -2541,47 +2460,55 @@ function receiveStreamlitRender(
 
     if(args.state){
 
-        const incoming =
-            args.state;
-
-
         state = {
 
             ...state,
 
-            ...incoming,
+            ...args.state,
 
             mask:{
+
                 ...state.mask,
 
-                ...(incoming.mask || {})
+                ...(args.state.mask || {})
 
             },
 
             subtitle:{
+
                 ...state.subtitle,
 
-                ...(incoming.subtitle || {})
+                ...(args.state.subtitle || {})
 
             }
 
         };
 
 
-        resizeCanvas();
+        if(video.videoWidth){
+
+            resizeCanvas();
+
+        }
+
+
+        updateBoxes();
 
     }
+
+
+    updateFrameHeight();
 
 }
 
 
 /* =========================================================
-   STREAMLIT RENDER EVENT
+   STREAMLIT MESSAGE
 ========================================================= */
 
 window.addEventListener(
     "message",
-    function(event){
+    event=>{
 
         if(
             event.data &&
@@ -2589,9 +2516,10 @@ window.addEventListener(
             "streamlit:render"
         ){
 
-            receiveStreamlitRender({
+            receive({
 
-                detail:event.data
+                detail:
+                    event.data
 
             });
 
@@ -2602,55 +2530,115 @@ window.addEventListener(
 
 
 /* =========================================================
-   RESIZE
+   WINDOW RESIZE
 ========================================================= */
+
+let resizeTimer = null;
 
 window.addEventListener(
     "resize",
-    function(){
+    ()=>{
 
-        resizeCanvas();
+        clearTimeout(
+            resizeTimer
+        );
 
-        updateBoxes();
+        resizeTimer =
+            setTimeout(
+                ()=>{
+
+                    if(
+                        video.videoWidth
+                    ){
+
+                        resizeCanvas();
+
+                    }
+
+                    updateBoxes();
+
+                    updateFrameHeight();
+
+                },
+                100
+            );
 
     }
 );
 
 
 /* =========================================================
-   INITIALIZE STREAMLIT COMPONENT
+   RESIZE OBSERVER
 ========================================================= */
 
 if(
-    window.Streamlit &&
-    typeof Streamlit.setComponentReady ===
-    "function"
+    typeof ResizeObserver !==
+    "undefined"
 ){
 
-    Streamlit.setComponentReady();
+    const observer =
+        new ResizeObserver(
+            ()=>{
 
-    Streamlit.setFrameHeight(
-        700
+                updateBoxes();
+
+                updateFrameHeight();
+
+            }
+        );
+
+
+    observer.observe(
+        document.body
     );
 
 }
 
 
 /* =========================================================
-   DEFAULT PANEL
+   STREAMLIT INIT
 ========================================================= */
 
-showPanel(
-    "video"
-);
+if(window.Streamlit){
+
+    Streamlit.setComponentReady();
+
+    /*
+       Initial height.
+       It will automatically update
+       after 9:16 / panel changes.
+    */
+
+    Streamlit.setFrameHeight(
+        Math.max(
+            650,
+            document.body.scrollHeight + 25
+        )
+    );
+
+}
 
 
 /* =========================================================
-   INITIAL DRAW
+   INITIAL PANEL
 ========================================================= */
 
-updateBoxes();
+showPanel("video");
 
+setTimeout(
+    updateFrameHeight,
+    100
+);
+
+setTimeout(
+    updateFrameHeight,
+    500
+);
+
+setTimeout(
+    updateFrameHeight,
+    1000
+);
 
 </script>
 
