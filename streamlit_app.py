@@ -30,94 +30,446 @@ FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 # =========================================================
 
 st.markdown(
-    """
-<style>
+"""<style>
+
+/* ================================
+   MAIN BACKGROUND
+================================ */
+
 [data-testid="stAppViewContainer"] {
-    background: radial-gradient(
-        circle at 20% 0%,
-        #172033 0%,
-        #090c12 38%,
-        #05070b 100%
-    );
+    background:
+        radial-gradient(
+            circle at 0% 0%,
+            rgba(0, 102, 255, 0.30),
+            transparent 35%
+        ),
+        radial-gradient(
+            circle at 100% 20%,
+            rgba(255, 0, 55, 0.28),
+            transparent 35%
+        ),
+        linear-gradient(
+            145deg,
+            #050b18 0%,
+            #08142b 45%,
+            #12060d 100%
+        );
 }
 
 [data-testid="stHeader"] {
-    background: rgba(0,0,0,0);
+    background: transparent;
 }
+
+/* ================================
+   MAIN CONTENT
+================================ */
 
 .block-container {
     max-width: 1050px;
-    padding-top: 2rem;
+    padding-top: 1.5rem;
     padding-bottom: 3rem;
 }
 
+/* ================================
+   ALL NORMAL TEXT
+================================ */
+
+.stApp,
+.stApp p,
+.stApp span,
+.stApp label,
+.stApp div {
+    color: #ffffff;
+}
+
+/* ================================
+   HERO
+================================ */
+
 .hero {
-    padding: 28px 24px;
-    border: 1px solid rgba(255,255,255,.10);
-    border-radius: 22px;
-    background: linear-gradient(
-        135deg,
-        rgba(35,43,62,.92),
-        rgba(10,13,20,.92)
-    );
-    box-shadow: 0 18px 60px rgba(0,0,0,.35);
-    margin-bottom: 20px;
+    padding: 30px 24px;
+    border-radius: 24px;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(0, 100, 255, 0.28),
+            rgba(255, 0, 65, 0.25)
+        );
+
+    border: 1px solid rgba(255,255,255,0.20);
+
+    box-shadow:
+        0 15px 50px rgba(0,0,0,0.55),
+        0 0 35px rgba(0,100,255,0.12);
+
+    margin-bottom: 25px;
 }
 
 .hero h1 {
-    margin: 0 0 6px 0;
-    font-size: 2.15rem;
+    color: #ffffff !important;
+    font-size: 2.5rem !important;
+    font-weight: 900 !important;
+    margin: 0 0 10px 0 !important;
+
+    text-shadow:
+        0 0 12px rgba(0,140,255,0.65);
 }
 
 .hero p {
-    margin: 0;
-    color: #aeb8c8;
+    color: #f5f7ff !important;
+    font-size: 1.05rem !important;
+    font-weight: 600 !important;
 }
+
+/* ================================
+   BADGES
+================================ */
 
 .badge {
     display: inline-block;
-    padding: 5px 10px;
+
+    padding: 7px 13px;
+    margin: 4px;
+
     border-radius: 999px;
-    background: rgba(70,130,255,.14);
-    color: #b9d0ff;
-    font-size: .82rem;
-    margin: 3px;
+
+    background:
+        linear-gradient(
+            90deg,
+            rgba(0,120,255,0.75),
+            rgba(255,0,70,0.75)
+        );
+
+    color: #ffffff !important;
+
+    font-size: 0.88rem !important;
+    font-weight: 800 !important;
+
+    border: 1px solid rgba(255,255,255,0.25);
+
+    box-shadow:
+        0 4px 15px rgba(0,0,0,0.30);
 }
+
+/* ================================
+   STEP TITLES
+================================ */
 
 .step {
-    font-size: 1.35rem;
-    font-weight: 700;
-    margin-top: 18px;
+    font-size: 1.55rem !important;
+    font-weight: 900 !important;
+
+    color: #ffffff !important;
+
+    margin-top: 28px;
+    margin-bottom: 10px;
+
+    text-shadow:
+        0 0 12px rgba(0,120,255,0.55);
 }
+
+/* ================================
+   CAPTION
+================================ */
+
+.stCaption,
+[data-testid="stCaptionContainer"] {
+    color: #dce6ff !important;
+    font-size: 1rem !important;
+    font-weight: 600 !important;
+}
+
+/* ================================
+   CARDS
+================================ */
 
 .card {
-    padding: 18px;
-    border-radius: 18px;
-    border: 1px solid rgba(255,255,255,.09);
-    background: rgba(18,23,33,.78);
-    margin: 12px 0;
+    padding: 20px;
+
+    border-radius: 20px;
+
+    background:
+        linear-gradient(
+            135deg,
+            rgba(20,40,75,0.92),
+            rgba(55,15,25,0.90)
+        );
+
+    border:
+        1px solid rgba(255,255,255,0.14);
+
+    box-shadow:
+        0 10px 35px rgba(0,0,0,0.45);
 }
 
-.small {
-    color: #8f9bad;
-    font-size: .9rem;
+/* ================================
+   HEADINGS
+================================ */
+
+h1,
+h2,
+h3,
+.stSubheader {
+    color: #ffffff !important;
+    font-weight: 900 !important;
 }
 
-div.stButton > button {
-    border-radius: 14px;
-    min-height: 48px;
-    font-weight: 700;
-}
+/* ================================
+   FILE UPLOADER
+================================ */
 
 [data-testid="stFileUploader"] {
-    border-radius: 16px;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(0,95,255,0.18),
+            rgba(255,0,60,0.15)
+        );
+
+    border:
+        2px dashed rgba(90,160,255,0.65);
+
+    border-radius: 18px;
+
+    padding: 8px;
+
+    box-shadow:
+        0 5px 25px rgba(0,0,0,0.30);
 }
 
-audio {
-    width: 100%;
+[data-testid="stFileUploader"] section {
+    background: transparent !important;
 }
-</style>
-""",
+
+[data-testid="stFileUploader"] button {
+    background:
+        linear-gradient(
+            90deg,
+            #087cff,
+            #ff174d
+        ) !important;
+
+    color: #ffffff !important;
+
+    border: none !important;
+
+    font-weight: 900 !important;
+
+    border-radius: 12px !important;
+}
+
+/* ================================
+   SELECT BOX
+================================ */
+
+[data-baseweb="select"] > div {
+    background: #f7f9ff !important;
+
+    border:
+        2px solid rgba(40,120,255,0.55) !important;
+
+    border-radius: 14px !important;
+
+    min-height: 50px !important;
+}
+
+[data-baseweb="select"] span {
+    color: #101827 !important;
+    font-weight: 800 !important;
+}
+
+[data-baseweb="select"] svg {
+    fill: #176cff !important;
+}
+
+/* ================================
+   SLIDER
+================================ */
+
+[data-testid="stSlider"] label {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+    font-size: 1rem !important;
+}
+
+/* ================================
+   BUTTONS
+================================ */
+
+div.stButton > button {
+
+    min-height: 52px !important;
+
+    border-radius: 15px !important;
+
+    border: none !important;
+
+    background:
+        linear-gradient(
+            90deg,
+            #006eff 0%,
+            #174cff 48%,
+            #ff174d 100%
+        ) !important;
+
+    color: #ffffff !important;
+
+    font-size: 1.05rem !important;
+
+    font-weight: 900 !important;
+
+    box-shadow:
+        0 8px 25px rgba(0,80,255,0.30);
+
+    transition:
+        transform 0.15s ease,
+        box-shadow 0.15s ease;
+}
+
+div.stButton > button:hover {
+
+    transform: translateY(-2px);
+
+    box-shadow:
+        0 10px 30px rgba(255,30,80,0.35);
+}
+
+/* ================================
+   DOWNLOAD BUTTON
+================================ */
+
+[data-testid="stDownloadButton"] button {
+
+    min-height: 50px !important;
+
+    border-radius: 14px !important;
+
+    background:
+        linear-gradient(
+            90deg,
+            #008cff,
+            #005eff
+        ) !important;
+
+    color: #ffffff !important;
+
+    font-size: 1rem !important;
+
+    font-weight: 900 !important;
+
+    border: none !important;
+
+    box-shadow:
+        0 7px 20px rgba(0,100,255,0.30);
+}
+
+/* ================================
+   TEXT AREA / SRT PREVIEW
+================================ */
+
+[data-testid="stTextArea"] textarea {
+
+    background:
+        #f7f9ff !important;
+
+    color:
+        #111827 !important;
+
+    border:
+        2px solid rgba(50,120,255,0.45) !important;
+
+    border-radius:
+        16px !important;
+
+    font-size:
+        15px !important;
+
+    font-weight:
+        600 !important;
+
+    line-height:
+        1.7 !important;
+}
+
+/* ================================
+   INFO BOX
+================================ */
+
+[data-testid="stAlert"] {
+
+    border-radius: 15px !important;
+
+    border:
+        1px solid rgba(90,160,255,0.35) !important;
+
+    background:
+        rgba(10,55,120,0.55) !important;
+}
+
+[data-testid="stAlert"] p,
+[data-testid="stAlert"] div {
+    color: #ffffff !important;
+    font-weight: 700 !important;
+}
+
+/* ================================
+   METRICS
+================================ */
+
+[data-testid="stMetricValue"] {
+    color: #ffffff !important;
+    font-size: 1.8rem !important;
+    font-weight: 900 !important;
+}
+
+[data-testid="stMetricLabel"] {
+    color: #c9d7ff !important;
+    font-weight: 700 !important;
+}
+
+/* ================================
+   MOBILE
+================================ */
+
+@media (max-width: 600px) {
+
+    .block-container {
+        padding-left: 14px;
+        padding-right: 14px;
+        padding-top: 1rem;
+    }
+
+    .hero {
+        padding: 23px 17px;
+        border-radius: 20px;
+    }
+
+    .hero h1 {
+        font-size: 2rem !important;
+    }
+
+    .hero p {
+        font-size: 0.95rem !important;
+        line-height: 1.6 !important;
+    }
+
+    .step {
+        font-size: 1.3rem !important;
+    }
+
+    .badge {
+        font-size: 0.78rem !important;
+        padding: 6px 9px;
+    }
+
+    div.stButton > button {
+        min-height: 54px !important;
+        font-size: 1rem !important;
+    }
+}
+
+</style>""",
     unsafe_allow_html=True,
 )
 
