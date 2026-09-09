@@ -2,18 +2,19 @@ import os
 import re
 import json
 import time
-import asyncio
 import random
+import base64
 import subprocess
 import tempfile
 from pathlib import Path
 
+import requests
 import streamlit as st
-from google import genai
-from google.genai import types
+import streamlit.components.v1 as components
 import edge_tts
+import asyncio
 import imageio_ffmpeg
-from PIL import Image, ImageFilter, ImageDraw, ImageFont
+from google import genai
 
 
 # ============================================================
@@ -21,19 +22,29 @@ from PIL import Image, ImageFilter, ImageDraw, ImageFont
 # ============================================================
 
 st.set_page_config(
-    page_title="Movie Dubbing AI",
+    page_title="Myanmar Movie AI Studio",
     page_icon="🎬",
     layout="wide",
 )
 
 FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 
+EDITOR_DIR = Path(__file__).parent / "video_editor"
+
+
 VOICES = {
     "သီဟ (အမျိုးသား)": "my-MM-ThihaNeural",
     "နီလာ (အမျိုးသမီး)": "my-MM-NilarNeural",
 }
 
-MODELS = [
+VOICE_STYLES = {
+    "ပုံမှန်": {"rate": 0, "pitch": 0},
+    "နက်နက် (Deep)": {"rate": -5, "pitch": -12},
+    "ပျော့ပျောင်း": {"rate": -3, "pitch": 5},
+    "တက်ကြွ": {"rate": 8, "pitch": 2},
+}
+
+GEMINI_MODELS = [
     "gemini-3.8-flash",
     "gemini-3.7-flash",
     "gemini-3.6-flash",
@@ -42,17 +53,17 @@ MODELS = [
     "gemini-3.1-flash-lite",
 ]
 
-TEMP_WORDS = (
+RETRY_WORDS = (
     "503",
+    "429",
     "500",
     "502",
     "504",
-    "429",
     "timeout",
     "unavailable",
     "overloaded",
-    "high demand",
     "resource exhausted",
+    "high demand",
 )
 
 
@@ -71,9 +82,14 @@ def run_cmd(args, timeout=1800):
     )
 
 
-def duration(path):
+def ffprobe_duration(path):
     r = run_cmd(
-        [FFMPEG, "-hide_banner", "-i", str(path)],
+        [
+            FFMPEG,
+            "-hide_banner",
+            "-i",
+            str(path),
+        ],
         120,
     )
 
@@ -90,6 +106,32 @@ def duration(path):
         + int(m.group(2)) * 60
         + float(m.group(3))
     )
+
+
+def probe_video_size(path):
+    r = run_cmd(
+        [
+            FFMPEG,
+            "-hide_banner",
+            "-i",
+            str(path),
+        ],
+        120,
+    )
+
+    text = r.stderr or ""
+
+    patterns = [
+        r"Video:.*?(\d{2,5})x(\d{2,5})",
+        r"Stream.*Video.*?(\d{2,5})x(\d{2,5})",
+    ]
+
+    for pattern in patterns:
+        m = re.search(pattern, text, re.I | re.S)
+        if m:
+            return int(m.group(1)), int(m.group(2))
+
+    raise RuntimeError("Video resolution ကို ဖတ်မရပါ။")
 
 
 def extract_audio(video, out):
@@ -120,37 +162,44 @@ def extract_audio(video, out):
         or out.stat().st_size < 1000
     ):
         raise RuntimeError(
-            "Original audio ထုတ်မရပါ။\n"
+            "Video ထဲက audio ထုတ်မရပါ။\n"
             + (r.stderr or "")
         )
 
 
-def safe_name(name, default="final_movie.mp4"):
+def get_secret(name):
+    value = st.secrets.get(name, "")
+
+    if value:
+        return str(value).strip()
+
+    return os.getenv(name, "").strip()
+
+
+def safe_filename(name):
+    name = str(name or "").strip()
+
     name = re.sub(
-        r"[^A-Za-z0-9._-]+",
+        r'[\\/:*?"<>|]+',
         "_",
-        (name or "").strip(),
+        name,
     )
 
-    if not name:
-        name = default
+    name = re.sub(
+        r"\s+",
+        "_",
+        name,
+    )
 
-    if not name.lower().endswith(".mp4"):
-        name += ".mp4"
-
-    return name
+    return name or "output"
 
 
 # ============================================================
 # GEMINI
 # ============================================================
 
-@st.cache_resource
-def get_client():
-    key = st.secrets.get(
-        "GEMINI_API_KEY",
-        os.getenv("GEMINI_API_KEY", ""),
-    )
+def gemini_client():
+    key = get_secret("GEMINI_API_KEY")
 
     if not key:
         raise RuntimeError(
@@ -161,30 +210,12 @@ def get_client():
     return genai.Client(api_key=key)
 
 
-def temporary_error(e):
-    text = str(e).lower()
-    return any(x.lower() in text for x in TEMP_WORDS)
-
-
-def model_list(c):
-    try:
-        names = []
-
-        for m in c.models.list():
-            n = getattr(m, "name", "")
-
-            if n:
-                names.append(n.replace("models/", ""))
-
-        usable = [
-            m for m in MODELS
-            if m in names
-        ]
-
-        return usable or MODELS
-
-    except Exception:
-        return MODELS
+def clean_text(s):
+    return re.sub(
+        r"\s+",
+        " ",
+        str(s or ""),
+    ).strip()
 
 
 def clean_json(text):
@@ -212,290 +243,787 @@ def clean_json(text):
     return text
 
 
-def normalize(items, dur):
-    out = []
+def translate_batch(client, items):
+    prompt = (
+        """
+You are a professional movie subtitle translator.
 
-    if not isinstance(items, list):
-        raise RuntimeError(
-            "AI response က JSON list မဟုတ်ပါ။"
-        )
+Translate every source dialogue into natural conversational Burmese.
 
-    for item in items:
-        if not isinstance(item, dict):
-            continue
-
-        try:
-            start = float(item.get("start", 0))
-            end = float(item.get("end", 0))
-        except Exception:
-            continue
-
-        text = str(
-            item.get("burmese", "")
-        ).strip()
-
-        start = max(0, min(start, dur))
-        end = max(0, min(end, dur))
-
-        if text and end - start >= 0.20:
-            out.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "burmese": text,
-                }
-            )
-
-    out.sort(key=lambda x: x["start"])
-
-    cleaned = []
-
-    for item in out:
-        if (
-            cleaned
-            and abs(
-                item["start"]
-                - cleaned[-1]["start"]
-            ) < 0.05
-            and item["burmese"]
-            == cleaned[-1]["burmese"]
-        ):
-            cleaned[-1]["end"] = max(
-                cleaned[-1]["end"],
-                item["end"],
-            )
-        else:
-            cleaned.append(item)
-
-    return cleaned
-
-
-def wait_file(c, f):
-    name = getattr(f, "name", None)
-
-    if not name:
-        return f
-
-    for _ in range(90):
-        try:
-            cur = c.files.get(name=name)
-
-            state = str(
-                getattr(
-                    getattr(cur, "state", None),
-                    "name",
-                    getattr(cur, "state", ""),
-                )
-            ).upper()
-
-            if "PROCESSING" not in state:
-                return cur
-
-        except Exception:
-            return f
-
-        time.sleep(2)
-
-    return f
-
-
-def analyze(c, audio, dur, status):
-    uploaded = wait_file(
-        c,
-        c.files.upload(file=str(audio)),
-    )
-
-    prompt = f"""
-You are a professional movie dubbing editor.
-
-Analyze the uploaded movie audio and find ALL meaningful spoken dialogue.
-
-Requirements:
-
-1. Do not invent dialogue.
-2. Keep chronological order.
-3. Return accurate approximate start/end timestamps in seconds.
-4. Translate every dialogue into natural conversational Burmese.
-5. Preserve meaning, emotion, names and relationships.
-6. Exclude music and sound effects.
-7. Do not merge unrelated dialogue.
-8. Keep Burmese lines concise enough for movie subtitles.
-9. Each subtitle should normally be short.
-10. Prefer natural spoken Burmese rather than literal translation.
-
-Return ONLY valid JSON.
-
-Audio duration:
-{dur:.2f} seconds.
+Rules:
+- Preserve meaning.
+- Preserve names.
+- Preserve emotion.
+- Do not add explanations.
+- Do not summarize.
+- Keep it concise enough for the original subtitle timing.
+- Return ONLY JSON.
+- Return exactly the same number of objects.
+- Keep the same id values.
 
 Format:
-
 [
-  {{
-    "start": 10.25,
-    "end": 13.80,
-    "burmese": "မြန်မာဘာသာပြန်"
-  }}
+  {"id":1,"burmese":"..."}
 ]
+
+INPUT:
 """
+        + json.dumps(
+            items,
+            ensure_ascii=False,
+        )
+    )
 
     errors = []
 
-    for model in model_list(c):
-
-        status(
-            f"AI model: {model}"
-        )
-
+    for model in GEMINI_MODELS:
         for attempt in range(2):
-
             try:
-                resp = c.models.generate_content(
+                response = client.models.generate_content(
                     model=model,
-                    contents=[
-                        types.Part.from_uri(
-                            file_uri=uploaded.uri,
-                            mime_type=(
-                                getattr(
-                                    uploaded,
-                                    "mime_type",
-                                    None,
-                                )
-                                or "audio/wav"
-                            ),
-                        ),
-                        prompt,
-                    ],
-                    config=types.GenerateContentConfig(
-                        temperature=0.15
-                    ),
+                    contents=prompt,
                 )
 
-                raw = getattr(
-                    resp,
-                    "text",
-                    "",
+                data = json.loads(
+                    clean_json(
+                        getattr(
+                            response,
+                            "text",
+                            "",
+                        )
+                    )
                 )
 
-                seg = normalize(
-                    json.loads(
-                        clean_json(raw)
-                    ),
-                    dur,
-                )
+                if (
+                    not isinstance(data, list)
+                    or len(data) != len(items)
+                ):
+                    raise RuntimeError(
+                        "Gemini translation result count မကိုက်ပါ။"
+                    )
 
-                if seg:
-                    return seg, model
+                result = {}
 
-                raise RuntimeError(
-                    "Dialogue မတွေ့ပါ။"
-                )
+                for item in data:
+                    idx = int(item["id"])
+                    text = clean_text(
+                        item.get("burmese", "")
+                    )
+
+                    if text:
+                        result[idx] = text
+
+                for i in range(
+                    1,
+                    len(items) + 1,
+                ):
+                    if i not in result:
+                        raise RuntimeError(
+                            "ဘာသာပြန်စာကြောင်းတချို့ မထွက်ပါ။"
+                        )
+
+                return result
 
             except Exception as e:
-
                 errors.append(
-                    f"{model} "
-                    f"attempt {attempt + 1}: "
-                    f"{e}"
+                    f"{model} attempt {attempt + 1}: {e}"
                 )
 
                 if (
                     attempt == 0
-                    and temporary_error(e)
+                    and any(
+                        x in str(e).lower()
+                        for x in RETRY_WORDS
+                    )
                 ):
-                    wait = (
-                        4
-                        + random.uniform(0, 2)
+                    time.sleep(
+                        3 + random.random() * 2
                     )
-
-                    status(
-                        f"{model} busy — "
-                        f"{wait:.1f}s retry"
-                    )
-
-                    time.sleep(wait)
-
                 else:
                     break
 
     raise RuntimeError(
-        "Gemini model အားလုံးနဲ့ "
-        "မအောင်မြင်ပါ။\n"
+        "Gemini translation မအောင်မြင်ပါ။\n"
         + "\n".join(errors[-8:])
     )
 
 
 # ============================================================
-# EDGE TTS
+# DEEPGRAM
 # ============================================================
 
-async def tts_async(
+def deepgram_key():
+    key = get_secret("DEEPGRAM_API_KEY")
+
+    if not key:
+        raise RuntimeError(
+            "DEEPGRAM_API_KEY မတွေ့ပါ။ "
+            "Streamlit Secrets ထဲမှာ ထည့်ပါ။"
+        )
+
+    return key
+
+
+def words_to_segments(words):
+    """
+    Deepgram word timestamps -> short subtitle segments.
+
+    Prevents one giant paragraph from becoming one subtitle.
+    """
+
+    MAX_CHARS = 42
+    MAX_DURATION = 6.0
+    PAUSE_SPLIT = 0.65
+
+    result = []
+    current = []
+
+    def flush():
+        nonlocal current
+
+        if not current:
+            return
+
+        first = current[0]
+        last = current[-1]
+
+        text = " ".join(
+            str(
+                x.get(
+                    "punctuated_word",
+                    x.get("word", ""),
+                )
+            )
+            for x in current
+        ).strip()
+
+        start = float(
+            first.get("start", 0)
+        )
+
+        end = float(
+            last.get(
+                "end",
+                last.get("start", start),
+            )
+        )
+
+        if text and end > start:
+            result.append(
+                {
+                    "start": start,
+                    "end": end,
+                    "source": clean_text(text),
+                }
+            )
+
+        current = []
+
+    for word in words:
+        if not word.get("word"):
+            continue
+
+        if current:
+            prev_end = float(
+                current[-1].get(
+                    "end",
+                    current[-1].get("start", 0),
+                )
+            )
+
+            cur_start = float(
+                word.get("start", prev_end)
+            )
+
+            pause = cur_start - prev_end
+
+            existing_text = " ".join(
+                str(
+                    x.get(
+                        "punctuated_word",
+                        x.get("word", ""),
+                    )
+                )
+                for x in current
+            )
+
+            proposed_text = (
+                existing_text
+                + " "
+                + str(
+                    word.get(
+                        "punctuated_word",
+                        word.get("word", ""),
+                    )
+                )
+            )
+
+            proposed_duration = (
+                float(
+                    word.get(
+                        "end",
+                        cur_start,
+                    )
+                )
+                - float(
+                    current[0].get(
+                        "start",
+                        cur_start,
+                    )
+                )
+            )
+
+            if (
+                pause >= PAUSE_SPLIT
+                or len(proposed_text) > MAX_CHARS
+                or proposed_duration > MAX_DURATION
+            ):
+                flush()
+
+        current.append(word)
+
+        punct = str(
+            word.get(
+                "punctuated_word",
+                word.get("word", ""),
+            )
+        )
+
+        if punct.endswith(
+            (
+                ".",
+                "!",
+                "?",
+                "။",
+                "！",
+                "？",
+            )
+        ):
+            flush()
+
+    flush()
+
+    return result
+
+
+def deepgram_transcribe(audio_path):
+    url = "https://api.deepgram.com/v1/listen"
+
+    params = {
+        "model": "nova-3",
+        "detect_language": "true",
+        "punctuate": "true",
+        "smart_format": "true",
+        "utterances": "true",
+        "diarize": "true",
+        "words": "true",
+    }
+
+    headers = {
+        "Authorization": f"Token {deepgram_key()}",
+        "Content-Type": "audio/wav",
+    }
+
+    data = audio_path.read_bytes()
+
+    last = ""
+
+    for attempt in range(3):
+        try:
+            response = requests.post(
+                url,
+                params=params,
+                headers=headers,
+                data=data,
+                timeout=900,
+            )
+
+            if response.status_code == 200:
+                obj = response.json()
+
+                results = obj.get(
+                    "results",
+                    {},
+                )
+
+                channels = results.get(
+                    "channels",
+                    [],
+                )
+
+                words = []
+
+                if channels:
+                    alternatives = channels[0].get(
+                        "alternatives",
+                        [],
+                    )
+
+                    if alternatives:
+                        words = alternatives[0].get(
+                            "words",
+                            [],
+                        ) or []
+
+                if words:
+                    segments = words_to_segments(
+                        words
+                    )
+
+                    if segments:
+                        return segments
+
+                utterances = results.get(
+                    "utterances",
+                    [],
+                ) or []
+
+                fallback = []
+
+                for u in utterances:
+                    text = clean_text(
+                        u.get(
+                            "transcript",
+                            "",
+                        )
+                    )
+
+                    start = float(
+                        u.get("start", 0)
+                    )
+
+                    end = float(
+                        u.get("end", start)
+                    )
+
+                    if (
+                        text
+                        and end > start
+                    ):
+                        fallback.append(
+                            {
+                                "start": start,
+                                "end": end,
+                                "source": text,
+                            }
+                        )
+
+                if fallback:
+                    return fallback
+
+                raise RuntimeError(
+                    "Deepgram က transcript မပြန်ပေးပါ။"
+                )
+
+            last = (
+                f"HTTP {response.status_code}: "
+                f"{response.text[:500]}"
+            )
+
+            if response.status_code not in (
+                429,
+                500,
+                502,
+                503,
+                504,
+            ):
+                break
+
+        except Exception as e:
+            last = str(e)
+
+        time.sleep(
+            2 ** attempt
+            + random.random()
+        )
+
+    raise RuntimeError(
+        "Deepgram STT မအောင်မြင်ပါ။\n"
+        + last
+    )
+
+
+# ============================================================
+# BUILD SRT
+# ============================================================
+
+def build_segments(
+    client,
+    source_segments,
+    progress,
+):
+    rows = []
+
+    for item in source_segments:
+        text = clean_text(
+            item.get("source", "")
+        )
+
+        start = float(
+            item.get("start", 0)
+        )
+
+        end = float(
+            item.get("end", start)
+        )
+
+        if (
+            text
+            and end > start + 0.05
+        ):
+            rows.append(
+                {
+                    "start": start,
+                    "end": end,
+                    "source": text,
+                }
+            )
+
+    if not rows:
+        raise RuntimeError(
+            "ပြောဆိုချက် မတွေ့ပါ။"
+        )
+
+    result = []
+
+    batch_size = 12
+
+    for pos in range(
+        0,
+        len(rows),
+        batch_size,
+    ):
+        batch = rows[
+            pos:pos + batch_size
+        ]
+
+        payload = [
+            {
+                "id": i + 1,
+                "text": item["source"],
+            }
+            for i, item in enumerate(batch)
+        ]
+
+        progress(
+            0.2
+            + 0.45
+            * (
+                pos
+                / max(len(rows), 1)
+            ),
+            (
+                "Gemini ဘာသာပြန်နေသည်... "
+                f"{min(pos + len(batch), len(rows))}"
+                f"/{len(rows)}"
+            ),
+        )
+
+        translated = translate_batch(
+            client,
+            payload,
+        )
+
+        for i, item in enumerate(
+            batch,
+            1,
+        ):
+            result.append(
+                {
+                    "start": item["start"],
+                    "end": item["end"],
+                    "burmese": translated[i],
+                }
+            )
+
+    return result
+
+
+def srt_time(seconds):
+    seconds = max(
+        0.0,
+        float(seconds),
+    )
+
+    milliseconds = int(
+        round(seconds * 1000)
+    )
+
+    hours, rem = divmod(
+        milliseconds,
+        3600000,
+    )
+
+    minutes, rem = divmod(
+        rem,
+        60000,
+    )
+
+    secs, milliseconds = divmod(
+        rem,
+        1000,
+    )
+
+    return (
+        f"{hours:02d}:"
+        f"{minutes:02d}:"
+        f"{secs:02d},"
+        f"{milliseconds:03d}"
+    )
+
+
+def make_srt(segments):
+    blocks = []
+
+    for i, item in enumerate(
+        segments,
+        1,
+    ):
+        blocks.append(
+            f"{i}\n"
+            f"{srt_time(item['start'])} --> "
+            f"{srt_time(item['end'])}\n"
+            f"{item['burmese']}\n"
+        )
+
+    return "\n".join(blocks)
+
+
+def parse_srt(text):
+    text = (
+        text
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .strip()
+    )
+
+    blocks = re.split(
+        r"\n\s*\n",
+        text,
+    )
+
+    output = []
+
+    for block in blocks:
+        lines = [
+            x.strip("\ufeff")
+            for x in block.split("\n")
+        ]
+
+        if len(lines) < 3:
+            continue
+
+        time_line = next(
+            (
+                x
+                for x in lines
+                if "-->" in x
+            ),
+            None,
+        )
+
+        if not time_line:
+            continue
+
+        match = re.match(
+            r"\s*"
+            r"(\d{2}:\d{2}:\d{2}[,.]\d{1,3})"
+            r"\s*-->\s*"
+            r"(\d{2}:\d{2}:\d{2}[,.]\d{1,3})",
+            time_line,
+        )
+
+        if not match:
+            continue
+
+        def parse_time(value):
+            h, m, s = (
+                value
+                .replace(",", ".")
+                .split(":")
+            )
+
+            return (
+                int(h) * 3600
+                + int(m) * 60
+                + float(s)
+            )
+
+        idx = lines.index(time_line)
+
+        subtitle_lines = [
+            x.strip()
+            for x in lines[idx + 1:]
+            if x.strip()
+        ]
+
+        subtitle = clean_text(
+            " ".join(subtitle_lines)
+        )
+
+        if subtitle:
+            output.append(
+                {
+                    "start": parse_time(
+                        match.group(1)
+                    ),
+                    "end": parse_time(
+                        match.group(2)
+                    ),
+                    "burmese": subtitle,
+                }
+            )
+
+    output.sort(
+        key=lambda x: x["start"]
+    )
+
+    cleaned = []
+
+    for item in output:
+        if (
+            item["end"]
+            <= item["start"]
+        ):
+            continue
+
+        if (
+            cleaned
+            and item["start"]
+            < cleaned[-1]["end"]
+        ):
+            item["start"] = (
+                cleaned[-1]["end"]
+            )
+
+        if item["end"] > item["start"]:
+            cleaned.append(item)
+
+    if not cleaned:
+        raise RuntimeError(
+            "SRT ထဲမှာ valid subtitle မတွေ့ပါ။"
+        )
+
+    return cleaned
+
+
+# ============================================================
+# TTS
+# ============================================================
+
+async def edge_tts_save(
     text,
     voice,
+    rate,
+    pitch,
     out,
 ):
-    await edge_tts.Communicate(
+    communicate = edge_tts.Communicate(
         text=text,
         voice=voice,
-        rate="+0%",
-        volume="+0%",
-    ).save(str(out))
-
-
-def tts(text, voice, out):
-    asyncio.run(
-        tts_async(
-            text,
-            voice,
-            out,
-        )
+        rate=f"{rate:+d}%",
+        pitch=f"{pitch:+d}Hz",
     )
 
-    if (
-        not out.exists()
-        or out.stat().st_size < 1000
-    ):
-        raise RuntimeError(
-            "TTS file မထွက်ပါ။"
-        )
+    await communicate.save(
+        str(out)
+    )
 
 
-def atempo_filter(speed):
+def make_tts(
+    text,
+    voice,
+    style,
+    out,
+):
+    config = VOICE_STYLES[style]
+
+    errors = []
+
+    for attempt in range(3):
+        try:
+            if out.exists():
+                out.unlink()
+
+            asyncio.run(
+                edge_tts_save(
+                    text,
+                    voice,
+                    config["rate"],
+                    config["pitch"],
+                    out,
+                )
+            )
+
+            if (
+                out.exists()
+                and out.stat().st_size > 1000
+            ):
+                return
+
+            raise RuntimeError(
+                "TTS file အလွတ်ဖြစ်နေပါသည်။"
+            )
+
+        except Exception as e:
+            errors.append(str(e))
+
+            time.sleep(
+                2 + attempt
+            )
+
+    raise RuntimeError(
+        "Burmese TTS မအောင်မြင်ပါ။\n"
+        + "\n".join(errors[-3:])
+    )
+
+
+def atempo_chain(speed):
     speed = max(
-        0.5,
-        min(float(speed), 3.0),
+        0.25,
+        min(float(speed), 4.0),
     )
 
-    filters = []
+    parts = []
 
-    while speed > 2:
-        filters.append("atempo=2")
-        speed /= 2
+    while speed > 2.0:
+        parts.append("atempo=2.0")
+        speed /= 2.0
 
     while speed < 0.5:
-        filters.append("atempo=0.5")
+        parts.append("atempo=0.5")
         speed /= 0.5
 
-    filters.append(
+    parts.append(
         f"atempo={speed:.6f}"
     )
 
-    return ",".join(filters)
+    return ",".join(parts)
 
 
-def fit_tts(
+def fit_clip(
     src,
     out,
     slot,
+    user_speed,
 ):
-    d = duration(src)
+    raw_duration = ffprobe_duration(
+        src
+    )
 
-    speed = max(
-        0.5,
-        min(
-            d / max(slot, 0.25),
-            3.0,
-        ),
+    desired_speed = max(
+        0.25,
+        min(float(user_speed), 2.0),
+    )
+
+    final_speed = (
+        raw_duration
+        / max(slot, 0.05)
+    ) * desired_speed
+
+    final_speed = max(
+        0.25,
+        min(final_speed, 4.0),
     )
 
     r = run_cmd(
@@ -508,11 +1036,19 @@ def fit_tts(
             "-i",
             str(src),
             "-filter:a",
-            atempo_filter(speed),
+            (
+                atempo_chain(final_speed)
+                + ",apad,"
+                + f"atrim=duration={slot:.3f}"
+            ),
             "-c:a",
             "aac",
             "-b:a",
             "160k",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
             str(out),
         ],
         180,
@@ -521,54 +1057,41 @@ def fit_tts(
     if (
         r.returncode
         or not out.exists()
+        or out.stat().st_size < 1000
     ):
         raise RuntimeError(
-            "TTS timing ပြင်မရပါ။\n"
+            "Voiceover timing ပြင်မရပါ။\n"
             + (r.stderr or "")
         )
 
 
-def validate_audio(path):
-    r = run_cmd(
-        [
-            FFMPEG,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(path),
-            "-map",
-            "0:a:0",
-            "-f",
-            "null",
-            "-",
-        ],
-        300,
-    )
-
-    return r.returncode == 0
-
-
-def make_burmese_audio(
+def build_voiceover(
     segments,
     voice,
-    dur,
+    style,
+    speed,
     work,
     progress,
 ):
-    files = []
+    clips = []
+
     total = len(segments)
 
     for i, item in enumerate(
         segments,
         1,
     ):
-
-        progress(
-            (i - 1)
-            / max(total, 1),
-            f"TTS {i}/{total}",
+        start = max(
+            0.0,
+            float(item["start"]),
         )
+
+        end = max(
+            start + 0.05,
+            float(item["end"]),
+        )
+
+        slot = end - start
 
         raw = (
             work
@@ -577,38 +1100,43 @@ def make_burmese_audio(
 
         fitted = (
             work
-            / f"fit_{i:04d}.m4a"
+            / f"clip_{i:04d}.m4a"
         )
 
-        tts(
+        progress(
+            0.1
+            + 0.65
+            * ((i - 1) / total),
+            f"Voice {i}/{total} ထုတ်နေသည်...",
+        )
+
+        make_tts(
             item["burmese"],
             voice,
+            style,
             raw,
         )
 
-        fit_tts(
+        fit_clip(
             raw,
             fitted,
-            max(
-                0.25,
-                item["end"]
-                - item["start"],
-            ),
+            slot,
+            speed,
         )
 
-        files.append(
+        clips.append(
             (
-                item["start"],
+                start,
                 fitted,
             )
         )
 
-    if not files:
-        raise RuntimeError(
-            "Burmese dialogue မရှိပါ။"
-        )
+    output = (
+        work
+        / "burmese_voiceover.m4a"
+    )
 
-    cmd = [
+    command = [
         FFMPEG,
         "-y",
         "-hide_banner",
@@ -616,30 +1144,30 @@ def make_burmese_audio(
         "error",
     ]
 
-    for _, f in files:
-        cmd += [
+    for _, file in clips:
+        command += [
             "-i",
-            str(f),
+            str(file),
         ]
 
     filters = []
     labels = []
 
     for i, (start, _) in enumerate(
-        files
+        clips
     ):
-
-        ms = int(
-            round(start * 1000)
+        delay = max(
+            0,
+            int(round(start * 1000)),
         )
 
         label = f"a{i}"
 
         filters.append(
             f"[{i}:a]"
-            f"aresample=48000,"
-            f"adelay={ms}|{ms},"
-            f"apad[{label}]"
+            f"adelay={delay}:all=1,"
+            f"aresample=48000"
+            f"[{label}]"
         )
 
         labels.append(
@@ -648,138 +1176,86 @@ def make_burmese_audio(
 
     filters.append(
         "".join(labels)
-        + f"amix="
-        f"inputs={len(labels)}:"
-        f"duration=longest:"
-        f"dropout_transition=0"
-        f"[mix]"
+        + f"amix=inputs={len(labels)}:"
+          "duration=longest:"
+          "dropout_transition=0,"
+          "loudnorm=I=-16:TP=-1.5:LRA=11,"
+          "alimiter=limit=0.95"
+          "[out]"
     )
 
-    out = (
-        work
-        / "burmese_audio.m4a"
-    )
-
-    cmd += [
+    command += [
         "-filter_complex",
         ";".join(filters),
         "-map",
-        "[mix]",
-        "-t",
-        f"{dur:.3f}",
+        "[out]",
         "-c:a",
         "aac",
         "-b:a",
-        "160k",
+        "192k",
         "-ar",
         "48000",
         "-ac",
         "2",
-        str(out),
+        str(output),
     ]
 
     r = run_cmd(
-        cmd,
+        command,
         1800,
     )
 
     if (
         r.returncode
-        or not out.exists()
-        or out.stat().st_size < 5000
-        or not validate_audio(out)
+        or not output.exists()
+        or output.stat().st_size < 5000
     ):
         raise RuntimeError(
-            "Burmese audio "
-            "mixing/validation "
-            "မအောင်မြင်ပါ။\n"
+            "Voiceover file မထုတ်နိုင်ပါ။\n"
             + (r.stderr or "")
+        )
+
+    check = run_cmd(
+        [
+            FFMPEG,
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(output),
+            "-f",
+            "null",
+            "-",
+        ],
+        300,
+    )
+
+    if check.returncode:
+        raise RuntimeError(
+            "Voiceover audio validation "
+            "မအောင်မြင်ပါ။\n"
+            + (check.stderr or "")
         )
 
     progress(
         1.0,
-        "Burmese audio OK",
+        "Voiceover ပြီးပါပြီ",
     )
 
-    return out
+    return output
 
 
 # ============================================================
-# SIMPLE FINAL EXPORT
+# VIDEO EDITOR PREVIEW
 # ============================================================
 
-def validate_video(path):
-    if (
-        not path.exists()
-        or path.stat().st_size < 10000
-    ):
-        return (
-            False,
-            "Final video file မမှန်ပါ။",
-        )
-
-    v = run_cmd(
-        [
-            FFMPEG,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(path),
-            "-map",
-            "0:v:0",
-            "-f",
-            "null",
-            "-",
-        ],
-        300,
-    )
-
-    if v.returncode:
-        return (
-            False,
-            "Video decode မအောင်မြင်ပါ။",
-        )
-
-    a = run_cmd(
-        [
-            FFMPEG,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(path),
-            "-map",
-            "0:a:0",
-            "-f",
-            "null",
-            "-",
-        ],
-        300,
-    )
-
-    if a.returncode:
-        return (
-            False,
-            "Final video ထဲမှာ "
-            "Audio track မရှိပါ "
-            "သို့မဟုတ် decode မရပါ။",
-        )
-
-    return True, "OK"
-
-
-def export_video(
-    video,
-    audio,
-    out,
+def make_preview_video(
+    source,
+    output,
 ):
-    d = duration(video)
-
-    if d <= 0:
-        raise RuntimeError(
-            "Video duration မမှန်ပါ။"
-        )
+    """
+    Small silent proxy video for the browser editor.
+    """
 
     r = run_cmd(
         [
@@ -789,126 +1265,986 @@ def export_video(
             "-loglevel",
             "error",
             "-i",
-            str(video),
-            "-i",
-            str(audio),
-            "-map",
-            "0:v:0",
-            "-map",
-            "1:a:0",
+            str(source),
+            "-vf",
+            (
+                "scale=720:720:"
+                "force_original_aspect_ratio=decrease,"
+                "pad=720:720:"
+                "(ow-iw)/2:"
+                "(oh-ih)/2"
+            ),
+            "-an",
             "-c:v",
-            "copy",
-            "-c:a",
-            "aac",
-            "-b:a",
-            "160k",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-            "-t",
-            f"{d:.3f}",
+            "libx264",
+            "-preset",
+            "ultrafast",
+            "-crf",
+            "30",
             "-movflags",
             "+faststart",
-            str(out),
+            str(output),
         ],
-        1800,
+        900,
     )
 
-    if r.returncode:
-
-        r = run_cmd(
-            [
-                FFMPEG,
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-i",
-                str(video),
-                "-i",
-                str(audio),
-                "-map",
-                "0:v:0",
-                "-map",
-                "1:a:0",
-                "-c:v",
-                "libx264",
-                "-preset",
-                "veryfast",
-                "-crf",
-                "23",
-                "-pix_fmt",
-                "yuv420p",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "160k",
-                "-ar",
-                "48000",
-                "-ac",
-                "2",
-                "-t",
-                f"{d:.3f}",
-                "-movflags",
-                "+faststart",
-                str(out),
-            ],
-            3600,
-        )
-
-    if r.returncode:
+    if (
+        r.returncode
+        or not output.exists()
+    ):
         raise RuntimeError(
-            "Final video export "
-            "မအောင်မြင်ပါ။\n"
+            "Editor preview video မထုတ်နိုင်ပါ။\n"
             + (r.stderr or "")
         )
 
-    ok, msg = validate_video(out)
 
-    if not ok:
-        raise RuntimeError(
-            "Final video validation "
-            f"မအောင်မြင်ပါ။\n{msg}"
+def video_data_url(path):
+    data = path.read_bytes()
+
+    encoded = base64.b64encode(
+        data
+    ).decode("ascii")
+
+    return (
+        "data:video/mp4;base64,"
+        + encoded
+    )
+
+
+# ============================================================
+# ASS SUBTITLE
+# ============================================================
+
+def ass_escape(text):
+    text = str(text or "")
+
+    text = text.replace(
+        "\\",
+        r"\\",
+    )
+
+    text = text.replace(
+        "{",
+        r"\{",
+    )
+
+    text = text.replace(
+        "}",
+        r"\}",
+    )
+
+    text = text.replace(
+        "\n",
+        r"\N",
+    )
+
+    return text
+
+
+def ass_time(seconds):
+    seconds = max(
+        0.0,
+        float(seconds),
+    )
+
+    h = int(seconds // 3600)
+
+    seconds -= h * 3600
+
+    m = int(seconds // 60)
+
+    seconds -= m * 60
+
+    s = int(seconds)
+
+    cs = int(
+        round(
+            (seconds - s) * 100
+        )
+    )
+
+    if cs >= 100:
+        cs = 0
+        s += 1
+
+    return (
+        f"{h}:{m:02d}:{s:02d}.{cs:02d}"
+    )
+
+
+def make_ass(
+    segments,
+    width,
+    height,
+    state,
+):
+    subtitle = state.get(
+        "subtitle",
+        {},
+    )
+
+    x = float(
+        subtitle.get(
+            "x",
+            0.5,
+        )
+    )
+
+    y = float(
+        subtitle.get(
+            "y",
+            0.86,
+        )
+    )
+
+    size = int(
+        subtitle.get(
+            "size",
+            42,
+        )
+    )
+
+    outline = int(
+        subtitle.get(
+            "outline",
+            3,
+        )
+    )
+
+    pos_x = int(
+        x * width
+    )
+
+    pos_y = int(
+        y * height
+    )
+
+    font_size = max(
+        18,
+        min(size, 120),
+    )
+
+    outline = max(
+        0,
+        min(outline, 12),
+    )
+
+    lines = [
+        "[Script Info]",
+        "ScriptType: v4.00+",
+        "PlayResX: 1920",
+        "PlayResY: 1080",
+        "",
+        "[V4+ Styles]",
+        "Format: Name, Fontname, Fontsize, "
+        "PrimaryColour, SecondaryColour, "
+        "OutlineColour, BackColour, Bold, "
+        "Italic, Underline, StrikeOut, "
+        "ScaleX, ScaleY, Spacing, Angle, "
+        "BorderStyle, Outline, Shadow, "
+        "Alignment, MarginL, MarginR, MarginV, Encoding",
+        (
+            "Style: Default,Noto Sans Myanmar,"
+            f"{font_size},"
+            "&H00FFFFFF,"
+            "&H000000FF,"
+            "&H00000000,"
+            "&H80000000,"
+            "0,0,0,0,100,100,0,0,"
+            f"1,{outline},0,5,20,20,20,1"
+        ),
+        "",
+        "[Events]",
+        "Format: Layer, Start, End, Style, "
+        "Name, MarginL, MarginR, MarginV, "
+        "Effect, Text",
+    ]
+
+    for item in segments:
+        text = ass_escape(
+            item["burmese"]
         )
 
+        dialogue = (
+            "Dialogue: 0,"
+            f"{ass_time(item['start'])},"
+            f"{ass_time(item['end'])},"
+            "Default,,0,0,0,"
+            f"{{\\pos({pos_x},{pos_y})}}"
+            f"{text}"
+        )
+
+        lines.append(dialogue)
+
+    return "\n".join(lines)
+
 
 # ============================================================
-# STEP 1 + STEP 2
+# VIDEO CANVAS
 # ============================================================
 
-st.title("🎬 Movie Dubbing AI")
+def canvas_size(ratio, iw, ih):
+    ratio = str(ratio or "Original")
+
+    if ratio == "9:16":
+        return 1080, 1920
+
+    if ratio == "16:9":
+        return 1920, 1080
+
+    if ratio == "1:1":
+        return 1080, 1080
+
+    if ratio == "4:5":
+        return 1080, 1350
+
+    return iw, ih
+
+
+def build_canvas_filter(
+    iw,
+    ih,
+    cw,
+    ch,
+    state,
+):
+    zoom = float(
+        state.get(
+            "zoom",
+            1.0,
+        )
+    )
+
+    zoom = max(
+        0.5,
+        min(zoom, 3.0),
+    )
+
+    flip_h = bool(
+        state.get(
+            "flip_h",
+            False,
+        )
+    )
+
+    flip_v = bool(
+        state.get(
+            "flip_v",
+            False,
+        )
+    )
+
+    if flip_h and flip_v:
+        flip_filter = "hflip,vflip"
+    elif flip_h:
+        flip_filter = "hflip"
+    elif flip_v:
+        flip_filter = "vflip"
+    else:
+        flip_filter = ""
+
+    if cw == iw and ch == ih:
+        base_scale = zoom
+    else:
+        base_scale = max(
+            cw / iw,
+            ch / ih,
+        ) * zoom
+
+    sw = max(
+        2,
+        int(round(iw * base_scale)),
+    )
+
+    sh = max(
+        2,
+        int(round(ih * base_scale)),
+    )
+
+    pos = state.get(
+        "position",
+        {},
+    )
+
+    px = float(
+        pos.get(
+            "x",
+            0.0,
+        )
+    )
+
+    py = float(
+        pos.get(
+            "y",
+            0.0,
+        )
+    )
+
+    x = int(
+        (cw - sw) / 2
+        + px * cw
+    )
+
+    y = int(
+        (ch - sh) / 2
+        + py * ch
+    )
+
+    chain = []
+
+    if flip_filter:
+        chain.append(
+            flip_filter
+        )
+
+    chain.append(
+        f"scale={sw}:{sh}"
+    )
+
+    chain.append(
+        "format=yuv420p"
+    )
+
+    chain.append(
+        f"pad={cw}:{ch}:{x}:{y}:black"
+    )
+
+    return ",".join(chain)
+
+
+# ============================================================
+# MASK FILTER
+# ============================================================
+
+def apply_mask_filter(
+    label,
+    cw,
+    ch,
+    state,
+):
+    mask = state.get(
+        "mask",
+        {},
+    )
+
+    enabled = bool(
+        mask.get(
+            "enabled",
+            False,
+        )
+    )
+
+    if not enabled:
+        return (
+            f"[{label}]"
+            "[vmasked]"
+        ), []
+
+
+    mx = max(
+        0,
+        min(
+            int(
+                float(
+                    mask.get(
+                        "x",
+                        0.70,
+                    )
+                ) * cw
+            ),
+            cw - 1,
+        ),
+    )
+
+    my = max(
+        0,
+        min(
+            int(
+                float(
+                    mask.get(
+                        "y",
+                        0.78,
+                    )
+                ) * ch
+            ),
+            ch - 1,
+        ),
+    )
+
+    mw = max(
+        2,
+        min(
+            int(
+                float(
+                    mask.get(
+                        "w",
+                        0.25,
+                    )
+                ) * cw
+            ),
+            cw - mx,
+        ),
+    )
+
+    mh = max(
+        2,
+        min(
+            int(
+                float(
+                    mask.get(
+                        "h",
+                        0.12,
+                    )
+                ) * ch
+            ),
+            ch - my,
+        ),
+    )
+
+    mode = str(
+        mask.get(
+            "type",
+            "solid",
+        )
+    ).lower()
+
+    invert = bool(
+        mask.get(
+            "invert",
+            False,
+        )
+    )
+
+    filters = []
+
+    if not invert:
+        if mode == "blur":
+            filters.append(
+                f"[{label}]split=2[main][blur0]"
+            )
+
+            filters.append(
+                "[blur0]"
+                f"crop={mw}:{mh}:{mx}:{my},"
+                "boxblur=18:2[blur1]"
+            )
+
+            filters.append(
+                "[main][blur1]"
+                f"overlay={mx}:{my}"
+                "[vmasked]"
+            )
+
+        elif mode == "mosaic":
+            filters.append(
+                f"[{label}]split=2[main][mos0]"
+            )
+
+            small_w = max(
+                2,
+                mw // 12,
+            )
+
+            small_h = max(
+                2,
+                mh // 12,
+            )
+
+            filters.append(
+                "[mos0]"
+                f"crop={mw}:{mh}:{mx}:{my},"
+                f"scale={small_w}:{small_h}:"
+                "flags=bilinear,"
+                f"scale={mw}:{mh}:flags=neighbor"
+                "[mos1]"
+            )
+
+            filters.append(
+                "[main][mos1]"
+                f"overlay={mx}:{my}"
+                "[vmasked]"
+            )
+
+        else:
+            filters.append(
+                f"[{label}]"
+                f"drawbox=x={mx}:y={my}:"
+                f"w={mw}:h={mh}:"
+                "color=black@0.92:t=fill"
+                "[vmasked]"
+            )
+
+    else:
+        if mode == "blur":
+            filters.append(
+                f"[{label}]split=2[main][blur0]"
+            )
+
+            filters.append(
+                "[blur0]"
+                "boxblur=18:2"
+                "[blurall]"
+            )
+
+            filters.append(
+                "[blurall][main]"
+                f"crop={mw}:{mh}:{mx}:{my}"
+                "[keep]"
+            )
+
+            filters.append(
+                "[blurall][keep]"
+                f"overlay={mx}:{my}"
+                "[vmasked]"
+            )
+
+        elif mode == "mosaic":
+            filters.append(
+                f"[{label}]split=2[main][mos0]"
+            )
+
+            filters.append(
+                "[mos0]"
+                "scale=iw/12:ih/12,"
+                "scale=iw*12:ih*12:flags=neighbor"
+                "[mosall]"
+            )
+
+            filters.append(
+                "[mosall][main]"
+                f"crop={mw}:{mh}:{mx}:{my}"
+                "[keep]"
+            )
+
+            filters.append(
+                "[mosall][keep]"
+                f"overlay={mx}:{my}"
+                "[vmasked]"
+            )
+
+        else:
+            filters.append(
+                f"[{label}]"
+                "drawbox=x=0:y=0:"
+                "w=iw:h=ih:"
+                "color=black@0.92:t=fill"
+                "[maskedall]"
+            )
+
+            filters.append(
+                "[maskedall]["
+                + label
+                + "]"
+                f"crop={mw}:{mh}:{mx}:{my}"
+                "[keep]"
+            )
+
+            filters.append(
+                "[maskedall][keep]"
+                f"overlay={mx}:{my}"
+                "[vmasked]"
+            )
+
+    return (
+        "[vmasked]"
+    ), filters
+
+
+# ============================================================
+# FINAL VIDEO RENDER
+# ============================================================
+
+def render_manual(
+    video_path,
+    output_path,
+    state,
+    srt_segments,
+    voice_path=None,
+    music_path=None,
+    original_volume=0.0,
+    voice_volume=1.0,
+    music_volume=0.15,
+):
+    iw, ih = probe_video_size(
+        video_path
+    )
+
+    ratio = state.get(
+        "ratio",
+        "Original",
+    )
+
+    cw, ch = canvas_size(
+        ratio,
+        iw,
+        ih,
+    )
+
+    start = max(
+        0.0,
+        float(
+            state.get(
+                "trim_start",
+                0.0,
+            )
+        ),
+    )
+
+    duration = ffprobe_duration(
+        video_path
+    )
+
+    end = float(
+        state.get(
+            "trim_end",
+            duration,
+        )
+    )
+
+    end = max(
+        start + 0.05,
+        min(end, duration),
+    )
+
+    subtitle_enabled = bool(
+        state.get(
+            "subtitle_enabled",
+            True,
+        )
+    )
+
+    background_blur = bool(
+        state.get(
+            "background_blur",
+            False,
+        )
+    )
+
+    canvas_filter = build_canvas_filter(
+        iw,
+        ih,
+        cw,
+        ch,
+        state,
+    )
+
+    filters = []
+
+    filters.append(
+        f"[0:v]"
+        f"{canvas_filter}"
+        "[canvas]"
+    )
+
+    video_label = "canvas"
+
+    if background_blur:
+        filters.append(
+            "[canvas]split=2[sharp][bg0]"
+        )
+
+        filters.append(
+            "[bg0]"
+            "boxblur=18:2"
+            "[bg]"
+        )
+
+        filters.append(
+            "[bg][sharp]"
+            "overlay=0:0"
+            "[blurcanvas]"
+        )
+
+        video_label = "blurcanvas"
+
+    masked_label, mask_filters = (
+        apply_mask_filter(
+            video_label,
+            cw,
+            ch,
+            state,
+        )
+    )
+
+    filters.extend(
+        mask_filters
+    )
+
+    if mask_filters:
+        video_label = "vmasked"
+
+    if subtitle_enabled and srt_segments:
+        ass_path = (
+            Path(tempfile.gettempdir())
+            / f"sub_{random.randint(100000,999999)}.ass"
+        )
+
+        ass_path.write_text(
+            make_ass(
+                srt_segments,
+                cw,
+                ch,
+                state,
+            ),
+            encoding="utf-8",
+        )
+
+        filters.append(
+            f"[{video_label}]"
+            f"subtitles={str(ass_path)}"
+            "[vfinal]"
+        )
+
+        video_label = "vfinal"
+
+    else:
+        filters.append(
+            f"[{video_label}]"
+            "[vfinal]"
+        )
+
+    command = [
+        FFMPEG,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-ss",
+        f"{start:.3f}",
+        "-to",
+        f"{end:.3f}",
+        "-i",
+        str(video_path),
+    ]
+
+    audio_inputs = []
+
+    if voice_path and Path(voice_path).exists():
+        command += [
+            "-i",
+            str(voice_path),
+        ]
+
+        audio_inputs.append(
+            "voice"
+        )
+
+    if music_path and Path(music_path).exists():
+        command += [
+            "-i",
+            str(music_path),
+        ]
+
+        audio_inputs.append(
+            "music"
+        )
+
+    command += [
+        "-filter_complex",
+        ";".join(filters),
+    ]
+
+    # --------------------------------------------------------
+    # AUDIO
+    # --------------------------------------------------------
+
+    audio_filters = []
+
+    audio_maps = []
+
+    input_index = 1
+
+    if voice_path and Path(voice_path).exists():
+        audio_filters.append(
+            f"[{input_index}:a]"
+            f"volume={voice_volume:.3f},"
+            "aresample=48000"
+            "[voice]"
+        )
+
+        audio_maps.append(
+            "[voice]"
+        )
+
+        input_index += 1
+
+    if music_path and Path(music_path).exists():
+        audio_filters.append(
+            f"[{input_index}:a]"
+            f"volume={music_volume:.3f},"
+            "aresample=48000,"
+            f"atrim=duration={end-start:.3f}"
+            "[music]"
+        )
+
+        audio_maps.append(
+            "[music]"
+        )
+
+    if original_volume > 0.001:
+        audio_filters.append(
+            "[0:a]"
+            f"volume={original_volume:.3f},"
+            "aresample=48000"
+            "[original]"
+        )
+
+        audio_maps.append(
+            "[original]"
+        )
+
+    if audio_maps:
+        if len(audio_maps) == 1:
+            audio_filters.append(
+                audio_maps[0]
+                + "alimiter=limit=0.95"
+                "[audiofinal]"
+            )
+        else:
+            audio_filters.append(
+                "".join(audio_maps)
+                + f"amix=inputs={len(audio_maps)}:"
+                  "duration=longest:"
+                  "dropout_transition=0,"
+                  "loudnorm=I=-16:TP=-1.5:LRA=11,"
+                  "alimiter=limit=0.95"
+                  "[audiofinal]"
+            )
+
+        full_filter = (
+            ";".join(filters)
+            + ";"
+            + ";".join(audio_filters)
+        )
+
+        command[
+            command.index(
+                "-filter_complex"
+            ) + 1
+        ] = full_filter
+
+        command += [
+            "-map",
+            "[vfinal]",
+            "-map",
+            "[audiofinal]",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-c:a",
+            "aac",
+            "-b:a",
+            "192k",
+            "-movflags",
+            "+faststart",
+            "-shortest",
+            str(output_path),
+        ]
+
+    else:
+        command += [
+            "-map",
+            "[vfinal]",
+            "-an",
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-pix_fmt",
+            "yuv420p",
+            "-movflags",
+            "+faststart",
+            str(output_path),
+        ]
+
+    r = run_cmd(
+        command,
+        3600,
+    )
+
+    if (
+        r.returncode
+        or not output_path.exists()
+        or output_path.stat().st_size < 10000
+    ):
+        raise RuntimeError(
+            "Final MP4 render မအောင်မြင်ပါ။\n"
+            + (r.stderr or "")
+        )
+
+    return output_path
+
+
+# ============================================================
+# SESSION STATE
+# ============================================================
+
+DEFAULT_EDITOR_STATE = {
+    "ratio": "Original",
+    "zoom": 1.0,
+    "position": {
+        "x": 0.0,
+        "y": 0.0,
+    },
+    "flip_h": False,
+    "flip_v": False,
+    "background_blur": False,
+    "mask": {
+        "enabled": False,
+        "type": "solid",
+        "invert": False,
+        "x": 0.68,
+        "y": 0.78,
+        "w": 0.30,
+        "h": 0.13,
+    },
+    "subtitle_enabled": True,
+    "subtitle": {
+        "x": 0.5,
+        "y": 0.86,
+        "size": 42,
+        "outline": 3,
+    },
+    "trim_start": 0.0,
+    "trim_end": 999999.0,
+}
+
+
+if "editor_state" not in st.session_state:
+    st.session_state.editor_state = (
+        DEFAULT_EDITOR_STATE.copy()
+    )
+
+
+# ============================================================
+# TITLE
+# ============================================================
+
+st.title(
+    "🎬 Myanmar Movie AI Studio"
+)
 
 st.caption(
-    "Video → AI dialogue → "
-    "မြန်မာ SRT → Voiceover → "
-    "Visual Edit → Final MP4"
+    "Video → Myanmar SRT → Voiceover → Visual Editor → Final MP4"
 )
 
 
-if "final_bytes" not in st.session_state:
-    st.session_state.final_bytes = None
-
-if "final_name" not in st.session_state:
-    st.session_state.final_name = (
-        "dubbed_video.mp4"
-    )
-
-if "srt_text" not in st.session_state:
-    st.session_state.srt_text = ""
-
-if "voice_bytes" not in st.session_state:
-    st.session_state.voice_bytes = None
-
-
-# ------------------------------------------------------------
+# ============================================================
 # STEP 1
-# ------------------------------------------------------------
+# ============================================================
 
-st.markdown("---")
-st.header("1️⃣ 🎙️ Video → မြန်မာ SRT")
+st.markdown(
+    "## 1️⃣ Video → မြန်မာ SRT"
+)
 
-uploaded = st.file_uploader(
+video_file = st.file_uploader(
     "🎥 Video တင်ပါ",
     type=[
         "mp4",
@@ -916,59 +2252,47 @@ uploaded = st.file_uploader(
         "mkv",
         "webm",
     ],
-    key="step1_video",
+    key="video",
 )
 
-voice_name = st.selectbox(
-    "🎙️ Voice",
-    list(VOICES),
-    key="step1_voice",
-)
-
-start = st.button(
-    "🚀 Start AI Dubbing",
+make_srt_button = st.button(
+    "📝 မြန်မာ SRT ထုတ်မယ်",
     type="primary",
     use_container_width=True,
-    key="start_ai",
 )
 
+if make_srt_button:
 
-if start:
-
-    st.session_state.final_bytes = None
-
-    if not uploaded:
+    if not video_file:
         st.error(
             "Video တစ်ခုအရင်တင်ပါ။"
         )
         st.stop()
 
     try:
-
         with tempfile.TemporaryDirectory() as td:
 
             work = Path(td)
 
             video = (
-                work / "input_video"
+                work
+                / "input_video"
+            )
+
+            audio = (
+                work
+                / "audio.wav"
             )
 
             video.write_bytes(
-                uploaded.getbuffer()
+                video_file.getbuffer()
             )
-
-            dur = duration(video)
 
             status = st.empty()
             bar = st.progress(0.0)
 
             status.info(
-                "1/4 Video စစ်နေသည်..."
-            )
-
-            audio = (
-                work
-                / "original_audio.wav"
+                "Video audio ထုတ်နေသည်..."
             )
 
             extract_audio(
@@ -976,181 +2300,111 @@ if start:
                 audio,
             )
 
-            bar.progress(0.10)
+            bar.progress(0.15)
 
             status.info(
-                "2/4 AI dialogue "
-                "နားထောင်/ဘာသာပြန်နေသည်..."
+                "Deepgram က dialogue + "
+                "word timestamp ရယူနေသည်..."
             )
 
-            seg, model = analyze(
-                get_client(),
-                audio,
-                dur,
-                status.info,
+            source_segments = (
+                deepgram_transcribe(
+                    audio
+                )
             )
 
-            bar.progress(0.45)
+            bar.progress(0.30)
 
-            st.success(
-                f"AI model: {model} • "
-                f"Dialogue: {len(seg)} lines"
+            status.info(
+                "Gemini က မြန်မာလို "
+                "ဘာသာပြန်နေသည်..."
             )
 
-            # SRT
-            srt_lines = []
-
-            for i, item in enumerate(
-                seg,
-                1,
-            ):
-
-                def fmt_srt(v):
-                    v = max(
-                        0,
-                        float(v),
-                    )
-
-                    ms = int(
-                        round(
-                            (v - int(v))
-                            * 1000
-                        )
-                    )
-
-                    sec = int(v)
-
-                    if ms >= 1000:
-                        sec += 1
-                        ms = 0
-
-                    h = sec // 3600
-                    sec %= 3600
-
-                    m = sec // 60
-                    sec %= 60
-
-                    return (
-                        f"{h:02d}:"
-                        f"{m:02d}:"
-                        f"{sec:02d},"
-                        f"{ms:03d}"
-                    )
-
-                srt_lines += [
-                    str(i),
-                    (
-                        f"{fmt_srt(item['start'])}"
-                        f" --> "
-                        f"{fmt_srt(item['end'])}"
+            segments = build_segments(
+                gemini_client(),
+                source_segments,
+                lambda p, t: (
+                    bar.progress(
+                        min(p, 0.9)
                     ),
-                    item["burmese"],
-                    "",
-                ]
-
-            srt_text = "\n".join(
-                srt_lines
+                    status.info(t),
+                ),
             )
 
-            st.session_state.srt_text = (
-                srt_text
+            srt = make_srt(
+                segments
             )
 
-            st.session_state.srt_name = (
-                "myanmar_subtitles.srt"
+            st.session_state[
+                "srt_text"
+            ] = srt
+
+            st.session_state[
+                "srt_name"
+            ] = (
+                Path(
+                    video_file.name
+                ).stem
+                + "_myanmar.srt"
             )
 
-            st.success(
-                "✅ မြန်မာ SRT ပြီးပါပြီ။"
-            )
-
-            bar.progress(0.60)
-
-            status.info(
-                "3/4 Burmese Voice "
-                "ထုတ်နေသည်..."
-            )
-
-            def voice_progress(
-                p,
-                text,
-            ):
-                bar.progress(
-                    0.60 + 0.35 * p
-                )
-                status.info(text)
-
-            voice_file = (
-                make_burmese_audio(
-                    seg,
-                    VOICES[voice_name],
-                    dur,
-                    work,
-                    voice_progress,
-                )
-            )
-
-            st.session_state.voice_bytes = (
-                voice_file.read_bytes()
-            )
-
-            st.session_state.voice_name = (
-                "myanmar_voiceover.m4a"
-            )
-
-            st.session_state.voice_mime = (
-                "audio/mp4"
-            )
-
-            st.session_state.voice_segments = (
-                seg
-            )
+            st.session_state[
+                "editor_segments"
+            ] = segments
 
             bar.progress(1.0)
 
             status.success(
-                "✅ SRT + Voiceover ပြီးပါပြီ။"
+                f"SRT ပြီးပါပြီ — "
+                f"{len(segments)} lines"
             )
 
     except Exception as e:
+        st.error(
+            "SRT ထုတ်ရာမှာ "
+            "အမှားဖြစ်ပါတယ်။"
+        )
         st.exception(e)
 
 
-if st.session_state.srt_text:
+if st.session_state.get(
+    "srt_text"
+):
 
     st.subheader(
-        "📄 မြန်မာ SRT Preview"
+        "📄 SRT Preview"
     )
 
     st.text_area(
         "မြန်မာ SRT",
-        st.session_state.srt_text,
+        st.session_state[
+            "srt_text"
+        ],
         height=300,
-        key="srt_preview",
     )
 
     st.download_button(
         "⬇️ Download Myanmar SRT",
-        st.session_state.srt_text.encode(
-            "utf-8-sig"
-        ),
+        st.session_state[
+            "srt_text"
+        ].encode("utf-8-sig"),
         st.session_state.get(
             "srt_name",
             "myanmar.srt",
         ),
         "application/x-subrip",
         use_container_width=True,
-        key="download_srt",
     )
 
 
-# ------------------------------------------------------------
+# ============================================================
 # STEP 2
-# ------------------------------------------------------------
+# ============================================================
 
 st.markdown("---")
-st.header(
-    "2️⃣ 🗣️ SRT → မြန်မာ Voiceover"
+
+st.markdown(
+    "## 2️⃣ SRT → မြန်မာ Voiceover"
 )
 
 srt_file = st.file_uploader(
@@ -1159,21 +2413,14 @@ srt_file = st.file_uploader(
     key="srt_upload",
 )
 
-voice_name_2 = st.selectbox(
+voice_name = st.selectbox(
     "🎙️ Voice",
     list(VOICES),
-    key="voice_step2",
 )
 
 style = st.selectbox(
-    "🎭 Voice Style",
-    [
-        "ပုံမှန်",
-        "နက်နက် (Deep)",
-        "ပျော့ပျောင်း",
-        "တက်ကြွ",
-    ],
-    key="voice_style",
+    "🎭 Deep / Style",
+    list(VOICE_STYLES),
 )
 
 speed = st.slider(
@@ -1182,94 +2429,18 @@ speed = st.slider(
     1.30,
     1.00,
     0.05,
-    key="voice_speed",
 )
 
 voice_filename = st.text_input(
-    "📁 Voiceover Filename",
-    "myanmar_voiceover.m4a",
-    key="voice_filename",
+    "💾 Voiceover filename",
+    value="myanmar_voiceover",
 )
 
 make_voice_button = st.button(
     "🗣️ Voiceover ထုတ်မယ်",
     type="primary",
     use_container_width=True,
-    key="make_voice",
 )
-
-
-def parse_srt(text):
-    rows = []
-
-    blocks = re.split(
-        r"\n\s*\n",
-        (text or "").strip(),
-    )
-
-    for block in blocks:
-
-        lines = [
-            x.strip("\ufeff")
-            for x in block.splitlines()
-            if x.strip()
-        ]
-
-        if len(lines) < 3:
-            continue
-
-        m = re.search(
-            r"(\d{2}):(\d{2}):(\d{2}),(\d{3})"
-            r"\s*-->\s*"
-            r"(\d{2}):(\d{2}):(\d{2}),(\d{3})",
-            lines[1],
-        )
-
-        if not m:
-            continue
-
-        a = [
-            int(m.group(i))
-            for i in range(1, 5)
-        ]
-
-        b = [
-            int(m.group(i))
-            for i in range(5, 9)
-        ]
-
-        start = (
-            a[0] * 3600
-            + a[1] * 60
-            + a[2]
-            + a[3] / 1000
-        )
-
-        end = (
-            b[0] * 3600
-            + b[1] * 60
-            + b[2]
-            + b[3] / 1000
-        )
-
-        text_value = " ".join(
-            lines[2:]
-        ).strip()
-
-        if (
-            text_value
-            and end > start
-        ):
-            rows.append(
-                {
-                    "start": start,
-                    "end": end,
-                    "burmese": text_value,
-                }
-            )
-
-    return rows
-
 
 if make_voice_button:
 
@@ -1285,16 +2456,20 @@ if make_voice_button:
             )
         )
 
-    elif st.session_state.srt_text:
+    elif st.session_state.get(
+        "srt_text"
+    ):
         source_srt = (
-            st.session_state.srt_text
+            st.session_state[
+                "srt_text"
+            ]
         )
 
     else:
         st.error(
             "SRT ဖိုင်တင်ပါ "
-            "(သို့) Step 1 မှာ SRT "
-            "အရင်ထုတ်ပါ။"
+            "(သို့) အဆင့် ၁ မှာ "
+            "SRT အရင်ထုတ်ပါ။"
         )
         st.stop()
 
@@ -1303,12 +2478,6 @@ if make_voice_button:
         segments = parse_srt(
             source_srt
         )
-
-        if not segments:
-            raise RuntimeError(
-                "SRT ထဲမှာ valid subtitle "
-                "မတွေ့ပါ။"
-            )
 
         with tempfile.TemporaryDirectory() as td:
 
@@ -1322,254 +2491,62 @@ if make_voice_button:
                 f"{len(segments)} lines"
             )
 
-            voice_style_values = {
-                "ပုံမှန်": {
-                    "rate": "+0%",
-                    "pitch": "+0Hz",
-                },
-                "နက်နက် (Deep)": {
-                    "rate": "-5%",
-                    "pitch": "-12Hz",
-                },
-                "ပျော့ပျောင်း": {
-                    "rate": "-3%",
-                    "pitch": "+5Hz",
-                },
-                "တက်ကြွ": {
-                    "rate": "+8%",
-                    "pitch": "+2Hz",
-                },
-            }
-
-            style_cfg = (
-                voice_style_values[
-                    style
-                ]
-            )
-
-            clips = []
-
-            total = len(
-                segments
-            )
-
-            for i, item in enumerate(
+            voiceover = build_voiceover(
                 segments,
-                1,
+                VOICES[voice_name],
+                style,
+                speed,
+                work,
+                lambda p, t: (
+                    bar.progress(
+                        min(p, 1.0)
+                    ),
+                    status.info(t),
+                ),
+            )
+
+            voice_data = (
+                voiceover.read_bytes()
+            )
+
+            filename = safe_filename(
+                voice_filename
+            )
+
+            if not filename.lower().endswith(
+                ".m4a"
             ):
+                filename += ".m4a"
 
-                raw = (
-                    work
-                    / f"voice_{i:04d}.mp3"
-                )
+            st.session_state[
+                "voice_bytes"
+            ] = voice_data
 
-                fitted = (
-                    work
-                    / f"fit_{i:04d}.m4a"
-                )
+            st.session_state[
+                "voice_name"
+            ] = filename
 
-                rate = (
-                    style_cfg["rate"]
-                )
+            st.session_state[
+                "voice_mime"
+            ] = "audio/mp4"
 
-                pitch = (
-                    style_cfg["pitch"]
-                )
-
-                async def make_voice(
-                    text,
-                    output,
-                    voice,
-                    rate,
-                    pitch,
-                ):
-                    await edge_tts.Communicate(
-                        text=text,
-                        voice=voice,
-                        rate=rate,
-                        pitch=pitch,
-                        volume="+0%",
-                    ).save(
-                        str(output)
-                    )
-
-                asyncio.run(
-                    make_voice(
-                        item["burmese"],
-                        raw,
-                        VOICES[
-                            voice_name_2
-                        ],
-                        rate,
-                        pitch,
-                    )
-                )
-
-                if (
-                    not raw.exists()
-                    or raw.stat().st_size
-                    < 1000
-                ):
-                    raise RuntimeError(
-                        "Voice file မထွက်ပါ။"
-                    )
-
-                slot = max(
-                    0.25,
-                    item["end"]
-                    - item["start"],
-                )
-
-                fit_tts(
-                    raw,
-                    fitted,
-                    slot,
-                )
-
-                clips.append(
-                    (
-                        item["start"],
-                        fitted,
-                    )
-                )
-
-                bar.progress(
-                    0.1
-                    + 0.8
-                    * i
-                    / total
-                )
-
-                status.info(
-                    f"Voice {i}/{total}"
-                )
-
-            out = (
-                work
-                / safe_name(
-                    voice_filename,
-                    "myanmar_voiceover.m4a",
-                ).replace(
-                    ".mp4",
-                    ".m4a",
-                )
-            )
-
-            cmd = [
-                FFMPEG,
-                "-y",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-            ]
-
-            for _, clip in clips:
-                cmd += [
-                    "-i",
-                    str(clip),
-                ]
-
-            filters = []
-            labels = []
-
-            for i, (
-                start_time,
-                _,
-            ) in enumerate(clips):
-
-                ms = int(
-                    round(
-                        start_time
-                        * 1000
-                    )
-                )
-
-                label = f"v{i}"
-
-                filters.append(
-                    f"[{i}:a]"
-                    f"aresample=48000,"
-                    f"adelay={ms}|{ms}"
-                    f"[{label}]"
-                )
-
-                labels.append(
-                    f"[{label}]"
-                )
-
-            filters.append(
-                "".join(labels)
-                + f"amix="
-                f"inputs={len(labels)}:"
-                f"duration=longest:"
-                f"dropout_transition=0,"
-                f"loudnorm=I=-16:"
-                f"TP=-1.5:"
-                f"LRA=11,"
-                f"alimiter=limit=0.95"
-                f"[out]"
-            )
-
-            cmd += [
-                "-filter_complex",
-                ";".join(filters),
-                "-map",
-                "[out]",
-                "-c:a",
-                "aac",
-                "-b:a",
-                "192k",
-                "-ar",
-                "48000",
-                "-ac",
-                "2",
-                str(out),
-            ]
-
-            r = run_cmd(
-                cmd,
-                1800,
-            )
-
-            if (
-                r.returncode
-                or not out.exists()
-                or out.stat().st_size
-                < 5000
-            ):
-                raise RuntimeError(
-                    "Voiceover file "
-                    "မထုတ်နိုင်ပါ။\n"
-                    + (r.stderr or "")
-                )
-
-            data = out.read_bytes()
-
-            st.session_state.voice_bytes = (
-                data
-            )
-
-            st.session_state.voice_name = (
-                safe_name(
-                    voice_filename,
-                    "myanmar_voiceover.mp4",
-                ).replace(
-                    ".mp4",
-                    ".m4a",
-                )
-            )
-
-            st.session_state.voice_segments = (
-                segments
-            )
+            st.session_state[
+                "voice_segments"
+            ] = segments
 
             bar.progress(1.0)
 
             status.success(
-                "✅ Voiceover ပြီးပါပြီ။"
+                "Voiceover ပြီးပါပြီ — "
+                "SRT timing အတိုင်း "
+                "audio ပြုလုပ်ပြီးပါပြီ။"
             )
 
     except Exception as e:
+        st.error(
+            "Voiceover ထုတ်ရာမှာ "
+            "အမှားဖြစ်ပါတယ်။"
+        )
         st.exception(e)
 
 
@@ -1578,24 +2555,33 @@ if st.session_state.get(
 ):
 
     st.subheader(
-        "🎧 Voiceover Preview"
+        "🔊 Voiceover Preview"
     )
 
     st.audio(
-        st.session_state.voice_bytes,
-        format="audio/mp4",
+        st.session_state[
+            "voice_bytes"
+        ],
+        format=st.session_state.get(
+            "voice_mime",
+            "audio/mp4",
+        ),
     )
 
     st.download_button(
         "⬇️ Download Voiceover",
-        st.session_state.voice_bytes,
+        st.session_state[
+            "voice_bytes"
+        ],
         st.session_state.get(
             "voice_name",
             "myanmar_voiceover.m4a",
         ),
-        "audio/mp4",
+        st.session_state.get(
+            "voice_mime",
+            "audio/mp4",
+        ),
         use_container_width=True,
-        key="download_voice",
     )
 
 
@@ -1605,1812 +2591,422 @@ if st.session_state.get(
 
 st.markdown("---")
 
-st.header(
-    "3️⃣ 🎬 Manual Visual Edit Studio"
+st.markdown(
+    "## 3️⃣ 🎬 Visual Edit Studio"
 )
 
 st.caption(
-    "Video ကိုမြင်ရင်း ချိန် → "
-    "Preview ပြောင်းတာကိုချက်ချင်းကြည့် → "
-    "အဆင်ပြေမှ Final Render"
+    "Video ကိုမြင်ရင်း Mask / Subtitle / Zoom / Position / "
+    "Flip / Ratio ကို တိုက်ရိုက်ချိန်နိုင်ပါတယ်။"
 )
 
-
-# ============================================================
-# VISUAL EDIT HELPERS
-# ============================================================
-
-def fmt_srt_time(v):
-    v = max(
-        0.0,
-        float(v),
-    )
-
-    sec = int(v)
-
-    ms = int(
-        round(
-            (v - sec)
-            * 1000
-        )
-    )
-
-    if ms >= 1000:
-        sec += 1
-        ms = 0
-
-    h = sec // 3600
-
-    sec %= 3600
-
-    m = sec // 60
-
-    sec %= 60
-
-    return (
-        f"{h:02d}:"
-        f"{m:02d}:"
-        f"{sec:02d},"
-        f"{ms:03d}"
-    )
-
-
-def get_font(size):
-
-    candidates = [
-        "/usr/share/fonts/truetype/noto/"
-        "NotoSansMyanmar-Regular.ttf",
-
-        "/usr/share/fonts/opentype/noto/"
-        "NotoSansMyanmar-Regular.ttf",
-
-        "/usr/share/fonts/truetype/noto/"
-        "NotoSansMyanmarUI-Regular.ttf",
-    ]
-
-    for path in candidates:
-
-        p = Path(path)
-
-        if p.exists():
-
-            try:
-                return ImageFont.truetype(
-                    str(p),
-                    size=size,
-                )
-            except Exception:
-                pass
-
-    return ImageFont.load_default()
-
-
-def fit_canvas(
-    image,
-    ratio,
-):
-    w, h = image.size
-
-    ratios = {
-        "Original": w / h,
-        "9:16": 9 / 16,
-        "16:9": 16 / 9,
-        "1:1": 1.0,
-        "4:5": 4 / 5,
-    }
-
-    target = ratios.get(
-        ratio,
-        w / h,
-    )
-
-    if ratio == "Original":
-        return image.copy()
-
-    current = w / h
-
-    if current > target:
-
-        new_w = int(
-            h * target
-        )
-
-        left = (
-            w - new_w
-        ) // 2
-
-        return image.crop(
-            (
-                left,
-                0,
-                left + new_w,
-                h,
-            )
-        )
-
-    new_h = int(
-        w / target
-    )
-
-    top = (
-        h - new_h
-    ) // 2
-
-    return image.crop(
-        (
-            0,
-            top,
-            w,
-            top + new_h,
-        )
-    )
-
-
-def preview_frame(
-    video_path,
-    t,
-):
-    with tempfile.NamedTemporaryFile(
-        suffix=".jpg",
-        delete=False,
-    ) as f:
-        out = Path(f.name)
-
-    r = run_cmd(
-        [
-            FFMPEG,
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-ss",
-            f"{max(0, t):.3f}",
-            "-i",
-            str(video_path),
-            "-frames:v",
-            "1",
-            "-vf",
-            "scale=960:-2",
-            "-q:v",
-            "3",
-            str(out),
-        ],
-        120,
-    )
-
-    if (
-        r.returncode
-        or not out.exists()
-    ):
-        raise RuntimeError(
-            "Preview frame "
-            "ထုတ်မရပါ။\n"
-            + (r.stderr or "")
-        )
-
-    try:
-        return Image.open(
-            out
-        ).convert("RGB")
-    finally:
-        try:
-            out.unlink()
-        except Exception:
-            pass
-
-
-def draw_preview(
-    image,
-    ratio,
-    zoom,
-    px,
-    py,
-    blur,
-    mask,
-    subtitle,
-    subtitle_pos,
-    subtitle_size,
-    subtitle_outline,
-):
-    """
-    Preview-only renderer.
-    User sees the result before Final Render.
-    """
-
-    base = fit_canvas(
-        image,
-        ratio,
-    )
-
-    canvas_w, canvas_h = (
-        base.size
-    )
-
-    # ----------------------------------------
-    # BACKGROUND
-    # ----------------------------------------
-
-    if (
-        blur
-        and ratio != "Original"
-    ):
-        background = base.filter(
-            ImageFilter.GaussianBlur(
-                radius=18
-            )
-        )
-    else:
-        background = base.copy()
-
-    # ----------------------------------------
-    # FOREGROUND VIDEO
-    # ----------------------------------------
-
-    fg = image.copy()
-
-    base_scale = min(
-        canvas_w / fg.width,
-        canvas_h / fg.height,
-    )
-
-    final_scale = (
-        base_scale
-        * float(zoom)
-    )
-
-    new_w = max(
-        1,
-        int(
-            fg.width
-            * final_scale
-        ),
-    )
-
-    new_h = max(
-        1,
-        int(
-            fg.height
-            * final_scale
-        ),
-    )
-
-    fg = fg.resize(
-        (
-            new_w,
-            new_h,
-        ),
-        Image.Resampling.LANCZOS,
-    )
-
-    x = int(
-        (canvas_w - new_w) / 2
-        + (
-            float(px)
-            / 100.0
-        )
-        * canvas_w
-    )
-
-    y = int(
-        (canvas_h - new_h) / 2
-        + (
-            float(py)
-            / 100.0
-        )
-        * canvas_h
-    )
-
-    # ----------------------------------------
-    # MASK
-    # ----------------------------------------
-
-    if mask != "None":
-
-        rgba = Image.new(
-            "RGBA",
-            fg.size,
-            (0, 0, 0, 0),
-        )
-
-        alpha = Image.new(
-            "L",
-            fg.size,
-            0,
-        )
-
-        draw = ImageDraw.Draw(
-            alpha
-        )
-
-        if mask == "Circle":
-
-            draw.ellipse(
-                (
-                    0,
-                    0,
-                    fg.width,
-                    fg.height,
-                ),
-                fill=255,
-            )
-
-        elif mask == "Rectangle":
-
-            radius = max(
-                10,
-                min(
-                    fg.width,
-                    fg.height,
-                )
-                // 12,
-            )
-
-            draw.rounded_rectangle(
-                (
-                    0,
-                    0,
-                    fg.width,
-                    fg.height,
-                ),
-                radius=radius,
-                fill=255,
-            )
-
-        rgba.paste(
-            fg,
-            (0, 0),
-            alpha,
-        )
-
-        background = (
-            background.convert(
-                "RGBA"
-            )
-        )
-
-        background.alpha_composite(
-            rgba,
-            (
-                x,
-                y,
-            ),
-        )
-
-        canvas = background.convert(
-            "RGB"
-        )
-
-    else:
-
-        canvas = background.convert(
-            "RGB"
-        )
-
-        canvas.paste(
-            fg,
-            (
-                x,
-                y,
-            ),
-        )
-
-    # ----------------------------------------
-    # SAFE AREA BORDER
-    # ----------------------------------------
-
-    overlay = Image.new(
-        "RGBA",
-        canvas.size,
-        (0, 0, 0, 0),
-    )
-
-    od = ImageDraw.Draw(
-        overlay
-    )
-
-    od.rectangle(
-        (
-            2,
-            2,
-            canvas_w - 3,
-            canvas_h - 3,
-        ),
-        outline=(255, 255, 255, 150),
-        width=2,
-    )
-
-    canvas = Image.alpha_composite(
-        canvas.convert("RGBA"),
-        overlay,
-    )
-
-    # ----------------------------------------
-    # SUBTITLE
-    # ----------------------------------------
-
-    if subtitle:
-
-        font = get_font(
-            int(subtitle_size)
-        )
-
-        max_width = int(
-            canvas_w * 0.88
-        )
-
-        words = subtitle.split()
-
-        lines = []
-        current = ""
-
-        for word in words:
-
-            test = (
-                current
-                + " "
-                + word
-            ).strip()
-
-            bbox = font.getbbox(
-                test
-            )
-
-            if (
-                bbox[2] - bbox[0]
-                <= max_width
-                or not current
-            ):
-                current = test
-            else:
-                lines.append(
-                    current
-                )
-                current = word
-
-        if current:
-            lines.append(
-                current
-            )
-
-        line_height = max(
-            int(
-                subtitle_size
-                * 1.4
-            ),
-            20,
-        )
-
-        total_height = (
-            line_height
-            * len(lines)
-        )
-
-        if subtitle_pos == "Top":
-            y_text = int(
-                canvas_h * 0.08
-            )
-
-        elif subtitle_pos == "Middle":
-            y_text = int(
-                (
-                    canvas_h
-                    - total_height
-                )
-                / 2
-            )
-
-        else:
-            y_text = int(
-                canvas_h * 0.80
-                - total_height / 2
-            )
-
-        draw = ImageDraw.Draw(
-            canvas
-        )
-
-        for line in lines:
-
-            bbox = draw.textbbox(
-                (
-                    0,
-                    0,
-                ),
-                line,
-                font=font,
-                stroke_width=int(
-                    subtitle_outline
-                ),
-            )
-
-            text_w = (
-                bbox[2]
-                - bbox[0]
-            )
-
-            x_text = max(
-                4,
-                (
-                    canvas_w
-                    - text_w
-                )
-                // 2,
-            )
-
-            draw.text(
-                (
-                    x_text,
-                    y_text,
-                ),
-                line,
-                font=font,
-                fill="white",
-                stroke_width=int(
-                    subtitle_outline
-                ),
-                stroke_fill="black",
-            )
-
-            y_text += line_height
-
-    return canvas.convert(
-        "RGB"
-    )
-
-
-def has_audio(path):
-    r = run_cmd(
-        [
-            FFMPEG,
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(path),
-            "-map",
-            "0:a:0",
-            "-f",
-            "null",
-            "-",
-        ],
-        60,
-    )
-
-    return r.returncode == 0
-
-
-# ============================================================
-# FINAL MANUAL RENDER
-# ============================================================
-
-def render_manual(
-    video,
-    voice,
-    srt_text,
-    trim_start,
-    trim_end,
-    ratio,
-    flip_h,
-    flip_v,
-    zoom,
-    px,
-    py,
-    blur,
-    mask,
-    subtitle_size,
-    subtitle_pos,
-    subtitle_outline,
-    music,
-    original_volume,
-    voice_volume,
-    music_volume,
-    quality,
-    out,
-):
-
-    final_duration = max(
-        0.05,
-        trim_end - trim_start,
-    )
-
-    # --------------------------------------------------------
-    # VIDEO
-    # --------------------------------------------------------
-
-    vf = [
-        (
-            f"trim="
-            f"start={trim_start:.3f}:"
-            f"end={trim_end:.3f}"
-        ),
-        "setpts=PTS-STARTPTS",
-    ]
-
-    if flip_h:
-        vf.append("hflip")
-
-    if flip_v:
-        vf.append("vflip")
-
-    if ratio != "Original":
-
-        target = {
-            "9:16": "9/16",
-            "16:9": "16/9",
-            "1:1": "1",
-            "4:5": "4/5",
-        }[ratio]
-
-        # Make a canvas according to selected ratio.
-        vf.append(
-            "scale="
-            f"iw*{zoom:.4f}:"
-            f"ih*{zoom:.4f}:"
-            "force_original_aspect_ratio=decrease"
-        )
-
-        vf.append(
-            "pad="
-            f"ceil(iw/{target}/2)*2:"
-            "ceil(ih/2)*2:"
-            f"(ow-iw)/2+"
-            f"({px / 100:.4f})*ow:"
-            f"(oh-ih)/2+"
-            f"({py / 100:.4f})*oh"
-        )
-
-    else:
-
-        vf.append(
-            f"scale="
-            f"iw*{zoom:.4f}:"
-            f"ih*{zoom:.4f}"
-        )
-
-    # --------------------------------------------------------
-    # BACKGROUND BLUR
-    # --------------------------------------------------------
-
-    if blur:
-        vf.append(
-            "boxblur=6:2"
-        )
-
-    # --------------------------------------------------------
-    # MASK
-    # --------------------------------------------------------
-
-    # Keep mask rendering stable.
-    # Circle = alpha outside circle.
-    if mask == "Circle":
-
-        vf.append(
-            "format=rgba,"
-            "geq="
-            "r=r:g=g:b=b:"
-            "a=if("
-            "gt("
-            "pow(X-W/2,2)+"
-            "pow(Y-H/2,2),"
-            "pow(min(W,H)/2,2)"
-            "),"
-            "0,"
-            "255"
-            "),"
-            "format=yuv420p"
-        )
-
-    elif mask == "Rectangle":
-
-        vf.append(
-            "format=rgba"
-        )
-
-    # --------------------------------------------------------
-    # SUBTITLE
-    # --------------------------------------------------------
-
-    if srt_text:
-
-        rows = parse_srt(
-            srt_text
-        )
-
-        kept = []
-
-        for row in rows:
-
-            a = max(
-                0,
-                row["start"]
-                - trim_start,
-            )
-
-            b = min(
-                final_duration,
-                row["end"]
-                - trim_start,
-            )
-
-            if b - a >= 0.05:
-
-                kept.append(
-                    (
-                        a,
-                        b,
-                        row["burmese"],
-                    )
-                )
-
-        if kept:
-
-            srt_tmp = Path(
-                tempfile.mkstemp(
-                    suffix=".srt"
-                )[1]
-            )
-
-            lines = []
-
-            for i, (
-                a,
-                b,
-                text_value,
-            ) in enumerate(
-                kept,
-                1,
-            ):
-
-                lines += [
-                    str(i),
-                    (
-                        f"{fmt_srt_time(a)}"
-                        f" --> "
-                        f"{fmt_srt_time(b)}"
-                    ),
-                    text_value,
-                    "",
-                ]
-
-            srt_tmp.write_text(
-                "\n".join(lines),
-                encoding="utf-8",
-            )
-
-            # ------------------------------------------------
-            # ASS subtitle
-            # ------------------------------------------------
-
-            ass_file = (
-                srt_tmp.with_suffix(
-                    ".ass"
-                )
-            )
-
-            alignment = {
-                "Top": 8,
-                "Middle": 5,
-                "Bottom": 2,
-            }[subtitle_pos]
-
-            ass_lines = [
-                "[Script Info]",
-                "ScriptType: v4.00+",
-                "PlayResX: 1920",
-                "PlayResY: 1080",
-                "",
-                "[V4+ Styles]",
-                (
-                    "Format: Name, Fontname, "
-                    "Fontsize, PrimaryColour, "
-                    "SecondaryColour, "
-                    "OutlineColour, BackColour, "
-                    "Bold, Italic, Underline, "
-                    "StrikeOut, ScaleX, ScaleY, "
-                    "Spacing, Angle, BorderStyle, "
-                    "Outline, Shadow, Alignment, "
-                    "MarginL, MarginR, MarginV, "
-                    "Encoding"
-                ),
-                (
-                    "Style: Default,"
-                    "Noto Sans Myanmar,"
-                    f"{int(subtitle_size * 1.35)},"
-                    "&H00FFFFFF,"
-                    "&H00FFFFFF,"
-                    "&H00000000,"
-                    "&H80000000,"
-                    "0,0,0,0,100,100,0,0,1,"
-                    f"{int(subtitle_outline * 2)},"
-                    "0,"
-                    f"{alignment},"
-                    "60,60,120,1"
-                ),
-                "",
-                "[Events]",
-                (
-                    "Format: Layer, Start, End, "
-                    "Style, Name, MarginL, "
-                    "MarginR, MarginV, Effect, Text"
-                ),
-            ]
-
-            def ass_time(v):
-
-                cs = int(
-                    round(
-                        v * 100
-                    )
-                )
-
-                hh = (
-                    cs
-                    // 360000
-                )
-
-                cs %= 360000
-
-                mm = (
-                    cs
-                    // 6000
-                )
-
-                cs %= 6000
-
-                ss = (
-                    cs
-                    // 100
-                )
-
-                cc = (
-                    cs
-                    % 100
-                )
-
-                return (
-                    f"{hh}:"
-                    f"{mm:02d}:"
-                    f"{ss:02d}."
-                    f"{cc:02d}"
-                )
-
-            for (
-                a,
-                b,
-                text_value,
-            ) in kept:
-
-                safe_text = (
-                    text_value
-                    .replace(
-                        "{",
-                        r"\{",
-                    )
-                    .replace(
-                        "}",
-                        r"\}",
-                    )
-                )
-
-                ass_lines.append(
-                    (
-                        "Dialogue: 0,"
-                        f"{ass_time(a)},"
-                        f"{ass_time(b)},"
-                        "Default,,0,0,0,,"
-                        f"{safe_text}"
-                    )
-                )
-
-            ass_file.write_text(
-                "\n".join(
-                    ass_lines
-                ),
-                encoding="utf-8",
-            )
-
-            ass_path = str(
-                ass_file
-            ).replace(
-                "\\",
-                "/",
-            )
-
-            vf.append(
-                "subtitles="
-                "'"
-                + ass_path.replace(
-                    "'",
-                    "\\'",
-                )
-                + "'"
-            )
-
-    # --------------------------------------------------------
-    # INPUTS
-    # --------------------------------------------------------
-
-    cmd = [
-        FFMPEG,
-        "-y",
-        "-hide_banner",
-        "-loglevel",
-        "error",
-        "-i",
-        str(video),
-    ]
-
-    input_count = 1
-
-    voice_index = None
-    music_index = None
-
-    if (
-        voice
-        and Path(voice).exists()
-    ):
-
-        voice_index = input_count
-
-        cmd += [
-            "-i",
-            str(voice),
-        ]
-
-        input_count += 1
-
-    if (
-        music
-        and Path(music).exists()
-    ):
-
-        music_index = input_count
-
-        cmd += [
-            "-stream_loop",
-            "-1",
-            "-i",
-            str(music),
-        ]
-
-        input_count += 1
-
-    # --------------------------------------------------------
-    # VIDEO FILTER
-    # --------------------------------------------------------
-
-    filter_complex = (
-        "[0:v]"
-        + ",".join(vf)
-        + "[v]"
-    )
-
-    audio_labels = []
-
-    # Original audio
-    if (
-        has_audio(video)
-        and original_volume > 0
-    ):
-
-        filter_complex += (
-            ";[0:a]"
-            f"atrim="
-            f"start={trim_start:.3f}:"
-            f"end={trim_end:.3f},"
-            "asetpts=PTS-STARTPTS,"
-            f"volume="
-            f"{original_volume / 100:.3f}"
-            "[oa]"
-        )
-
-        audio_labels.append(
-            "[oa]"
-        )
-
-    # Voiceover
-    if (
-        voice_index is not None
-        and voice_volume > 0
-    ):
-
-        filter_complex += (
-            f";[{voice_index}:a]"
-            f"atrim=0:"
-            f"{final_duration:.3f},"
-            "asetpts=PTS-STARTPTS,"
-            f"volume="
-            f"{voice_volume / 100:.3f}"
-            "[va]"
-        )
-
-        audio_labels.append(
-            "[va]"
-        )
-
-    # Background music
-    if (
-        music_index is not None
-        and music_volume > 0
-    ):
-
-        filter_complex += (
-            f";[{music_index}:a]"
-            f"atrim=0:"
-            f"{final_duration:.3f},"
-            "asetpts=PTS-STARTPTS,"
-            f"volume="
-            f"{music_volume / 100:.3f}"
-            "[ma]"
-        )
-
-        audio_labels.append(
-            "[ma]"
-        )
-
-    # --------------------------------------------------------
-    # MIX AUDIO
-    # --------------------------------------------------------
-
-    audio_map = None
-
-    if audio_labels:
-
-        filter_complex += (
-            ";"
-            + "".join(
-                audio_labels
-            )
-            + f"amix="
-            f"inputs={len(audio_labels)}:"
-            f"duration=longest:"
-            "dropout_transition=0,"
-            "loudnorm="
-            "I=-16:"
-            "TP=-1.5:"
-            "LRA=11,"
-            "alimiter="
-            "limit=0.95"
-            "[a]"
-        )
-
-        audio_map = "[a]"
-
-    cmd += [
-        "-filter_complex",
-        filter_complex,
-        "-map",
-        "[v]",
-    ]
-
-    if audio_map:
-        cmd += [
-            "-map",
-            audio_map,
-        ]
-
-    crf = {
-        "High": "18",
-        "Good": "21",
-        "Small": "26",
-    }[quality]
-
-    cmd += [
-        "-c:v",
-        "libx264",
-        "-preset",
-        "veryfast",
-        "-crf",
-        crf,
-        "-pix_fmt",
-        "yuv420p",
-    ]
-
-    if audio_map:
-
-        cmd += [
-            "-c:a",
-            "aac",
-            "-b:a",
-            "192k",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-        ]
-
-    else:
-
-        cmd += [
-            "-an",
-        ]
-
-    cmd += [
-        "-t",
-        f"{final_duration:.3f}",
-        "-movflags",
-        "+faststart",
-        str(out),
-    ]
-
-    result = run_cmd(
-        cmd,
-        3600,
-    )
-
-    if (
-        result.returncode
-        or not out.exists()
-        or out.stat().st_size < 10000
-    ):
-        raise RuntimeError(
-            "Final Render "
-            "မအောင်မြင်ပါ။\n"
-            + (
-                result.stderr
-                or ""
-            )
-        )
-
-    return out
-
-
-# ============================================================
-# STEP 3 UI
-# ============================================================
-
-edit_video = st.file_uploader(
-    "🎥 Edit လုပ်မယ့် Video",
+editor_video = st.file_uploader(
+    "🎥 Step 3 အတွက် Video",
     type=[
         "mp4",
         "mov",
         "mkv",
         "webm",
     ],
-    key="edit_video_upload",
+    key="editor_video",
 )
 
+if editor_video:
 
-if edit_video:
+    if "editor_source_name" not in st.session_state:
+        st.session_state[
+            "editor_source_name"
+        ] = editor_video.name
 
     if (
-        "edit_video_bytes"
-        not in st.session_state
-        or st.session_state.get(
-            "edit_video_name"
-        )
-        != edit_video.name
-    ):
-
-        st.session_state.edit_video_bytes = (
-            edit_video.getvalue()
-        )
-
-        st.session_state.edit_video_name = (
-            edit_video.name
-        )
-
-        st.session_state.ed_final = None
-
-    suffix = Path(
-        edit_video.name
-    ).suffix
-
-    with tempfile.NamedTemporaryFile(
-        suffix=suffix,
-        delete=False,
-    ) as tf:
-
-        tf.write(
-            st.session_state.edit_video_bytes
-        )
-
-        edit_path = Path(
-            tf.name
-        )
-
-    try:
-
-        edit_duration = duration(
-            edit_path
-        )
-
-    except Exception:
-
-        edit_duration = 0.0
-
-    if edit_duration <= 0:
-
-        st.error(
-            "Video duration မဖတ်နိုင်ပါ။"
-        )
-
-        st.stop()
-
-    # --------------------------------------------------------
-    # Preview timeline
-    # --------------------------------------------------------
-
-    st.subheader(
-        "👀 LIVE VISUAL PREVIEW"
-    )
-
-    st.info(
-        "အောက်က Preview ကိုကြည့်ပြီး "
-        "Zoom / Position / Mask / "
-        "စာတန်းနေရာတွေကို ချိန်ပါ။"
-    )
-
-    timeline = st.slider(
-        "⏱️ Preview Timeline",
-        0.0,
-        float(edit_duration),
-        min(
-            0.0,
-            float(edit_duration),
-        ),
-        0.1,
-        key="editor_timeline",
-    )
-
-    # --------------------------------------------------------
-    # Canvas
-    # --------------------------------------------------------
-
-    ratio = st.selectbox(
-        "📐 Ratio / Canvas",
-        [
-            "Original",
-            "9:16",
-            "16:9",
-            "1:1",
-            "4:5",
-        ],
-        key="editor_ratio",
-    )
-
-    c1, c2, c3, c4 = st.columns(4)
-
-    with c1:
-
-        flip_h = st.checkbox(
-            "↔️ Flip H",
-            key="editor_flip_h",
-        )
-
-    with c2:
-
-        flip_v = st.checkbox(
-            "↕️ Flip V",
-            key="editor_flip_v",
-        )
-
-    with c3:
-
-        blur = st.checkbox(
-            "🌫️ Background Blur",
-            key="editor_blur",
-        )
-
-    with c4:
-
-        mask = st.selectbox(
-            "🎭 Mask",
-            [
-                "None",
-                "Circle",
-                "Rectangle",
-            ],
-            key="editor_mask",
-        )
-
-    # --------------------------------------------------------
-    # Zoom + Position
-    # --------------------------------------------------------
-
-    st.markdown(
-        "### 🔍 Zoom / Position"
-    )
-
-    z1, z2, z3 = st.columns(3)
-
-    with z1:
-
-        zoom = st.slider(
-            "Zoom",
-            0.50,
-            2.50,
-            1.00,
-            0.05,
-            key="editor_zoom",
-        )
-
-    with z2:
-
-        px = st.slider(
-            "Position X",
-            -50,
-            50,
-            0,
-            1,
-            key="editor_px",
-        )
-
-    with z3:
-
-        py = st.slider(
-            "Position Y",
-            -50,
-            50,
-            0,
-            1,
-            key="editor_py",
-        )
-
-    # --------------------------------------------------------
-    # SRT
-    # --------------------------------------------------------
-
-    st.markdown(
-        "### 📄 Subtitle"
-    )
-
-    editor_srt = st.file_uploader(
-        "SRT တင်ပါ "
-        "(မတင်လည်း Step 1 SRT သုံးမယ်)",
-        type=["srt"],
-        key="editor_srt",
-    )
-
-    source_srt = (
         st.session_state.get(
-            "srt_text",
-            "",
+            "editor_source_bytes"
         )
-    )
+        != editor_video.getvalue()
+    ):
+        st.session_state[
+            "editor_source_bytes"
+        ] = editor_video.getvalue()
 
-    if editor_srt:
-
-        source_srt = (
-            editor_srt
-            .getvalue()
-            .decode(
-                "utf-8-sig",
-                errors="replace",
+        st.session_state[
+            "editor_state"
+        ] = json.loads(
+            json.dumps(
+                DEFAULT_EDITOR_STATE
             )
         )
 
-    subtitle_rows = parse_srt(
-        source_srt
-    )
-
-    current_subtitle = ""
-
-    for row in subtitle_rows:
-
-        if (
-            row["start"]
-            <= timeline
-            <= row["end"]
-        ):
-
-            current_subtitle = (
-                row["burmese"]
-            )
-
-            break
-
-    # --------------------------------------------------------
-    # Subtitle controls
-    # --------------------------------------------------------
-
-    s1, s2, s3 = st.columns(3)
-
-    with s1:
-
-        subtitle_size = st.slider(
-            "🔤 စာတန်းအရွယ်",
-            20,
-            80,
-            42,
-            2,
-            key="editor_sub_size",
+        st.session_state.pop(
+            "editor_result",
+            None,
         )
-
-    with s2:
-
-        subtitle_pos = st.selectbox(
-            "📍 စာတန်းနေရာ",
-            [
-                "Top",
-                "Middle",
-                "Bottom",
-            ],
-            index=2,
-            key="editor_sub_pos",
-        )
-
-    with s3:
-
-        subtitle_outline = st.slider(
-            "⭕ Outline",
-            0,
-            8,
-            3,
-            1,
-            key="editor_sub_outline",
-        )
-
-    if current_subtitle:
-
-        st.caption(
-            "လက်ရှိ Dialogue:"
-        )
-
-        st.info(
-            current_subtitle
-        )
-
-    else:
-
-        st.caption(
-            "ဒီအချိန်မှာ Subtitle မရှိပါ။"
-        )
-
-    # --------------------------------------------------------
-    # LIVE FRAME PREVIEW
-    # --------------------------------------------------------
 
     try:
 
-        frame = preview_frame(
-            edit_path,
-            timeline,
-        )
+        with tempfile.TemporaryDirectory() as td:
 
-        preview = draw_preview(
-            frame,
-            ratio,
-            zoom,
-            px,
-            py,
-            blur,
-            mask,
-            current_subtitle,
-            subtitle_pos,
-            subtitle_size,
-            subtitle_outline,
-        )
+            work = Path(td)
 
-        st.image(
-            preview,
-            caption=(
-                f"🎬 LIVE PREVIEW  "
-                f"{timeline:.1f}s / "
-                f"{edit_duration:.1f}s"
-            ),
-            use_container_width=True,
-        )
-
-    except Exception as e:
-
-        st.error(
-            f"Preview မရပါ: {e}"
-        )
-
-    # --------------------------------------------------------
-    # AUDIO
-    # --------------------------------------------------------
-
-    st.markdown(
-        "### 🔊 Audio"
-    )
-
-    voice_upload = st.file_uploader(
-        "🎙️ Voiceover "
-        "(.m4a / .mp3 / .wav)",
-        type=[
-            "m4a",
-            "mp3",
-            "wav",
-        ],
-        key="editor_voice",
-    )
-
-    voice_path = None
-
-    if voice_upload:
-
-        with tempfile.NamedTemporaryFile(
-            suffix=Path(
-                voice_upload.name
-            ).suffix,
-            delete=False,
-        ) as vf:
-
-            vf.write(
-                voice_upload.getvalue()
+            source = (
+                work
+                / "editor_input.mp4"
             )
 
-            voice_path = Path(
-                vf.name
+            preview = (
+                work
+                / "editor_preview.mp4"
             )
 
-    elif st.session_state.get(
-        "voice_bytes"
-    ):
+            source.write_bytes(
+                editor_video.getbuffer()
+            )
 
-        with tempfile.NamedTemporaryFile(
-            suffix=".m4a",
-            delete=False,
-        ) as vf:
+            make_preview_video(
+                source,
+                preview,
+            )
 
-            vf.write(
+            source_url = video_data_url(
+                preview
+            )
+
+            segments = (
+                st.session_state.get(
+                    "voice_segments"
+                )
+                or st.session_state.get(
+                    "editor_segments"
+                )
+                or []
+            )
+
+            if not segments and st.session_state.get(
+                "srt_text"
+            ):
+                try:
+                    segments = parse_srt(
+                        st.session_state[
+                            "srt_text"
+                        ]
+                    )
+                except Exception:
+                    segments = []
+
+            editor_result = components.declare_component(
+                "visual_video_editor",
+                path=str(
+                    EDITOR_DIR
+                ),
+            )(
+                video=source_url,
+                duration=ffprobe_duration(
+                    source
+                ),
+                subtitles=segments,
+                initial_state=st.session_state[
+                    "editor_state"
+                ],
+                key="visual_video_editor",
+                default=st.session_state[
+                    "editor_state"
+                ],
+            )
+
+            if (
+                isinstance(
+                    editor_result,
+                    dict,
+                )
+                and editor_result
+            ):
                 st.session_state[
-                    "voice_bytes"
+                    "editor_state"
+                ] = editor_result
+
+            current_state = (
+                st.session_state[
+                    "editor_state"
                 ]
             )
 
-            voice_path = Path(
-                vf.name
+            st.markdown(
+                "### 🎧 Audio"
             )
 
-        st.success(
-            "Step 2 Voiceover ကို "
-            "အလိုအလျောက်သုံးမည်။"
-        )
-
-    music_upload = st.file_uploader(
-        "🎵 Background Music "
-        "(optional)",
-        type=[
-            "mp3",
-            "m4a",
-            "wav",
-        ],
-        key="editor_music",
-    )
-
-    music_path = None
-
-    if music_upload:
-
-        with tempfile.NamedTemporaryFile(
-            suffix=Path(
-                music_upload.name
-            ).suffix,
-            delete=False,
-        ) as mf:
-
-            mf.write(
-                music_upload.getvalue()
+            audio_col1, audio_col2 = (
+                st.columns(2)
             )
 
-            music_path = Path(
-                mf.name
+            with audio_col1:
+                use_voice = st.checkbox(
+                    "🗣️ Generated Voiceover သုံးမယ်",
+                    value=bool(
+                        st.session_state.get(
+                            "voice_bytes"
+                        )
+                    ),
+                )
+
+            with audio_col2:
+                original_volume = st.slider(
+                    "Original Audio",
+                    0.0,
+                    1.0,
+                    0.0,
+                    0.05,
+                )
+
+            music_file = st.file_uploader(
+                "🎵 Background Music (optional)",
+                type=[
+                    "mp3",
+                    "wav",
+                    "m4a",
+                    "aac",
+                    "ogg",
+                ],
+                key="editor_music",
             )
 
-    a1, a2, a3 = st.columns(3)
-
-    with a1:
-
-        original_volume = st.slider(
-            "Original Audio %",
-            0,
-            100,
-            0,
-            5,
-            key="editor_original_volume",
-        )
-
-    with a2:
-
-        voice_volume = st.slider(
-            "Voiceover %",
-            0,
-            150,
-            100,
-            5,
-            key="editor_voice_volume",
-        )
-
-    with a3:
-
-        music_volume = st.slider(
-            "Music %",
-            0,
-            80,
-            15,
-            5,
-            key="editor_music_volume",
-        )
-
-    # --------------------------------------------------------
-    # TRIM
-    # --------------------------------------------------------
-
-    st.markdown(
-        "### ✂️ Trim"
-    )
-
-    t1, t2 = st.columns(2)
-
-    with t1:
-
-        trim_start = st.number_input(
-            "Trim Start (sec)",
-            min_value=0.0,
-            max_value=max(
+            music_volume = st.slider(
+                "🎵 Music Volume",
                 0.0,
-                edit_duration - 0.05,
-            ),
-            value=0.0,
-            step=0.1,
-            key="editor_trim_start",
-        )
-
-    with t2:
-
-        trim_end = st.number_input(
-            "Trim End (sec)",
-            min_value=0.05,
-            max_value=max(
+                1.0,
+                0.15,
                 0.05,
-                edit_duration,
-            ),
-            value=float(
-                edit_duration
-            ),
-            step=0.1,
-            key="editor_trim_end",
-        )
-
-    if (
-        trim_end
-        <= trim_start
-    ):
-
-        st.warning(
-            "Trim End က "
-            "Trim Start ထက် "
-            "ကြီးရပါမယ်။"
-        )
-
-    # --------------------------------------------------------
-    # OUTPUT
-    # --------------------------------------------------------
-
-    quality = st.selectbox(
-        "🎞️ Output Quality",
-        [
-            "High",
-            "Good",
-            "Small",
-        ],
-        index=1,
-        key="editor_quality",
-    )
-
-    output_filename = st.text_input(
-        "📁 Final Filename",
-        "final_movie.mp4",
-        key="editor_filename",
-    )
-
-    # --------------------------------------------------------
-    # FINAL RENDER
-    # --------------------------------------------------------
-
-    if st.button(
-        "🎬 FINAL RENDER",
-        type="primary",
-        use_container_width=True,
-        key="final_render_button",
-    ):
-
-        if (
-            trim_end
-            <= trim_start
-        ):
-
-            st.error(
-                "Trim range မမှန်ပါ။"
             )
 
-            st.stop()
+            voice_volume = st.slider(
+                "🗣️ Voice Volume",
+                0.5,
+                2.0,
+                1.0,
+                0.05,
+            )
 
-        try:
+            st.markdown(
+                "### ✂️ Trim / Output"
+            )
 
-            with tempfile.TemporaryDirectory() as td:
+            video_duration = (
+                ffprobe_duration(
+                    source
+                )
+            )
 
-                output = (
-                    Path(td)
-                    / safe_name(
-                        output_filename,
-                        "final_movie.mp4",
-                    )
+            trim_col1, trim_col2 = (
+                st.columns(2)
+            )
+
+            with trim_col1:
+                trim_start = st.number_input(
+                    "Start (sec)",
+                    min_value=0.0,
+                    max_value=max(
+                        0.0,
+                        video_duration
+                        - 0.05,
+                    ),
+                    value=min(
+                        float(
+                            current_state.get(
+                                "trim_start",
+                                0.0,
+                            )
+                        ),
+                        max(
+                            0.0,
+                            video_duration
+                            - 0.05,
+                        ),
+                    ),
+                    step=0.1,
                 )
 
-                with st.spinner(
-                    "🎬 Final video render "
-                    "လုပ်နေသည်..."
+            with trim_col2:
+                trim_end = st.number_input(
+                    "End (sec)",
+                    min_value=0.05,
+                    max_value=video_duration,
+                    value=min(
+                        float(
+                            current_state.get(
+                                "trim_end",
+                                video_duration,
+                            )
+                        ),
+                        video_duration,
+                    ),
+                    step=0.1,
+                )
+
+            current_state[
+                "trim_start"
+            ] = trim_start
+
+            current_state[
+                "trim_end"
+            ] = max(
+                trim_start + 0.05,
+                trim_end,
+            )
+
+            output_name = st.text_input(
+                "💾 Final filename",
+                value="Myanmar_Final",
+            )
+
+            render_button = st.button(
+                "🎬 RENDER FINAL MP4",
+                type="primary",
+                use_container_width=True,
+            )
+
+            if render_button:
+
+                if (
+                    trim_end
+                    <= trim_start
                 ):
-
-                    render_manual(
-                        edit_path,
-                        voice_path,
-                        source_srt,
-                        float(
-                            trim_start
-                        ),
-                        float(
-                            trim_end
-                        ),
-                        ratio,
-                        flip_h,
-                        flip_v,
-                        zoom,
-                        px,
-                        py,
-                        blur,
-                        mask,
-                        subtitle_size,
-                        subtitle_pos,
-                        subtitle_outline,
-                        music_path,
-                        original_volume,
-                        voice_volume,
-                        music_volume,
-                        quality,
-                        output,
+                    st.error(
+                        "Trim End က "
+                        "Trim Start ထက် ကြီးရပါမယ်။"
                     )
+                    st.stop()
 
-                st.session_state.ed_final = (
-                    output.read_bytes()
-                )
+                try:
 
-                st.session_state.ed_final_name = (
-                    safe_name(
-                        output_filename,
-                        "final_movie.mp4",
+                    with tempfile.TemporaryDirectory() as render_td:
+
+                        render_work = Path(
+                            render_td
+                        )
+
+                        render_video = (
+                            render_work
+                            / "input.mp4"
+                        )
+
+                        render_video.write_bytes(
+                            editor_video.getbuffer()
+                        )
+
+                        voice_path = None
+
+                        if (
+                            use_voice
+                            and st.session_state.get(
+                                "voice_bytes"
+                            )
+                        ):
+                            voice_path = (
+                                render_work
+                                / "voice.m4a"
+                            )
+
+                            voice_path.write_bytes(
+                                st.session_state[
+                                    "voice_bytes"
+                                ]
+                            )
+
+                        music_path = None
+
+                        if music_file:
+                            music_path = (
+                                render_work
+                                / "music"
+                            )
+
+                            music_path.write_bytes(
+                                music_file.getbuffer()
+                            )
+
+                        final_name = safe_filename(
+                            output_name
+                        )
+
+                        if not final_name.lower().endswith(
+                            ".mp4"
+                        ):
+                            final_name += ".mp4"
+
+                        final_path = (
+                            render_work
+                            / final_name
+                        )
+
+                        status = st.empty()
+                        progress = st.progress(
+                            0.0
+                        )
+
+                        status.info(
+                            "🎬 Final video render "
+                            "လုပ်နေသည်..."
+                        )
+
+                        progress.progress(
+                            0.25
+                        )
+
+                        render_manual(
+                            render_video,
+                            final_path,
+                            current_state,
+                            segments,
+                            voice_path=voice_path,
+                            music_path=music_path,
+                            original_volume=original_volume,
+                            voice_volume=voice_volume,
+                            music_volume=music_volume,
+                        )
+
+                        progress.progress(
+                            1.0
+                        )
+
+                        result_bytes = (
+                            final_path.read_bytes()
+                        )
+
+                        st.session_state[
+                            "editor_result"
+                        ] = result_bytes
+
+                        st.session_state[
+                            "editor_result_name"
+                        ] = final_name
+
+                        status.success(
+                            "✅ Final MP4 "
+                            "အောင်မြင်စွာ ပြီးပါပြီ။"
+                        )
+
+                except Exception as e:
+                    st.error(
+                        "Final video render "
+                        "မအောင်မြင်ပါ။"
                     )
-                )
+                    st.exception(e)
 
-            st.success(
-                "✅ Final Video ပြီးပါပြီ။"
-            )
-
-        except Exception as e:
-
-            st.exception(e)
-
-
-# ============================================================
-# FINAL PREVIEW
-# ============================================================
 
 if st.session_state.get(
-    "ed_final"
+    "editor_result"
 ):
 
-    st.markdown("---")
-
-    st.subheader(
-        "🎬 Final Video Preview"
+    st.markdown(
+        "### 🎬 Final Video"
     )
 
     st.video(
-        st.session_state.ed_final
+        st.session_state[
+            "editor_result"
+        ]
     )
 
     st.download_button(
-        "⬇️ Download Final MP4",
-        st.session_state.ed_final,
-        st.session_state.get(
-            "ed_final_name",
-            "final_movie.mp4",
-        ),
-        "video/mp4",
-        use_container_width=True,
-        key="download_final_editor",
-    )
+        "⬇️ DOWNLOAD FINAL MP4",
+        st.session_state[
+            "editor_result"
+        ],
