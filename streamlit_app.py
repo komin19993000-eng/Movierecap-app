@@ -32,47 +32,22 @@ FFMPEG = imageio_ffmpeg.get_ffmpeg_exe()
 st.markdown(
 """<style>
 
-/* ================================
-   MAIN BACKGROUND
-================================ */
-
 [data-testid="stAppViewContainer"] {
     background:
-        radial-gradient(
-            circle at 0% 0%,
-            rgba(0, 102, 255, 0.30),
-            transparent 35%
-        ),
-        radial-gradient(
-            circle at 100% 20%,
-            rgba(255, 0, 55, 0.28),
-            transparent 35%
-        ),
-        linear-gradient(
-            145deg,
-            #050b18 0%,
-            #08142b 45%,
-            #12060d 100%
-        );
+        radial-gradient(circle at 0% 0%, rgba(0, 102, 255, 0.30), transparent 35%),
+        radial-gradient(circle at 100% 20%, rgba(255, 0, 55, 0.28), transparent 35%),
+        linear-gradient(145deg, #050b18 0%, #08142b 45%, #12060d 100%);
 }
 
 [data-testid="stHeader"] {
     background: transparent;
 }
 
-/* ================================
-   MAIN CONTENT
-================================ */
-
 .block-container {
     max-width: 1050px;
     padding-top: 1.5rem;
     padding-bottom: 3rem;
 }
-
-/* ================================
-   ALL NORMAL TEXT
-================================ */
 
 .stApp,
 .stApp p,
@@ -82,27 +57,19 @@ st.markdown(
     color: #ffffff;
 }
 
-/* ================================
-   HERO
-================================ */
-
 .hero {
     padding: 30px 24px;
     border-radius: 24px;
-
     background:
         linear-gradient(
             135deg,
             rgba(0, 100, 255, 0.28),
             rgba(255, 0, 65, 0.25)
         );
-
     border: 1px solid rgba(255,255,255,0.20);
-
     box-shadow:
         0 15px 50px rgba(0,0,0,0.55),
         0 0 35px rgba(0,100,255,0.12);
-
     margin-bottom: 25px;
 }
 
@@ -111,9 +78,7 @@ st.markdown(
     font-size: 2.5rem !important;
     font-weight: 900 !important;
     margin: 0 0 10px 0 !important;
-
-    text-shadow:
-        0 0 12px rgba(0,140,255,0.65);
+    text-shadow: 0 0 12px rgba(0,140,255,0.65);
 }
 
 .hero p {
@@ -122,56 +87,32 @@ st.markdown(
     font-weight: 600 !important;
 }
 
-/* ================================
-   BADGES
-================================ */
-
 .badge {
     display: inline-block;
-
     padding: 7px 13px;
     margin: 4px;
-
     border-radius: 999px;
-
     background:
         linear-gradient(
             90deg,
             rgba(0,120,255,0.75),
             rgba(255,0,70,0.75)
         );
-
     color: #ffffff !important;
-
     font-size: 0.88rem !important;
     font-weight: 800 !important;
-
     border: 1px solid rgba(255,255,255,0.25);
-
-    box-shadow:
-        0 4px 15px rgba(0,0,0,0.30);
+    box-shadow: 0 4px 15px rgba(0,0,0,0.30);
 }
-
-/* ================================
-   STEP TITLES
-================================ */
 
 .step {
     font-size: 1.55rem !important;
     font-weight: 900 !important;
-
     color: #ffffff !important;
-
     margin-top: 28px;
     margin-bottom: 10px;
-
-    text-shadow:
-        0 0 12px rgba(0,120,255,0.55);
+    text-shadow: 0 0 12px rgba(0,120,255,0.55);
 }
-
-/* ================================
-   CAPTION
-================================ */
 
 .stCaption,
 [data-testid="stCaptionContainer"] {
@@ -180,32 +121,18 @@ st.markdown(
     font-weight: 600 !important;
 }
 
-/* ================================
-   CARDS
-================================ */
-
 .card {
     padding: 20px;
-
     border-radius: 20px;
-
     background:
         linear-gradient(
             135deg,
             rgba(20,40,75,0.92),
             rgba(55,15,25,0.90)
         );
-
-    border:
-        1px solid rgba(255,255,255,0.14);
-
-    box-shadow:
-        0 10px 35px rgba(0,0,0,0.45);
+    border: 1px solid rgba(255,255,255,0.14);
+    box-shadow: 0 10px 35px rgba(0,0,0,0.45);
 }
-
-/* ================================
-   HEADINGS
-================================ */
 
 h1,
 h2,
@@ -215,10 +142,6 @@ h3,
     font-weight: 900 !important;
 }
 
-/* ================================
-   FILE UPLOADER
-================================ */
-
 [data-testid="stFileUploader"] {
     background:
         linear-gradient(
@@ -226,16 +149,10 @@ h3,
             rgba(0,95,255,0.18),
             rgba(255,0,60,0.15)
         );
-
-    border:
-        2px dashed rgba(90,160,255,0.65);
-
+    border: 2px dashed rgba(90,160,255,0.65);
     border-radius: 18px;
-
     padding: 8px;
-
-    box-shadow:
-        0 5px 25px rgba(0,0,0,0.30);
+    box-shadow: 0 5px 25px rgba(0,0,0,0.30);
 }
 
 [data-testid="stFileUploader"] section {
@@ -249,28 +166,16 @@ h3,
             #087cff,
             #ff174d
         ) !important;
-
     color: #ffffff !important;
-
     border: none !important;
-
     font-weight: 900 !important;
-
     border-radius: 12px !important;
 }
 
-/* ================================
-   SELECT BOX
-================================ */
-
 [data-baseweb="select"] > div {
     background: #f7f9ff !important;
-
-    border:
-        2px solid rgba(40,120,255,0.55) !important;
-
+    border: 2px solid rgba(40,120,255,0.55) !important;
     border-radius: 14px !important;
-
     min-height: 50px !important;
 }
 
@@ -283,28 +188,16 @@ h3,
     fill: #176cff !important;
 }
 
-/* ================================
-   SLIDER
-================================ */
-
 [data-testid="stSlider"] label {
     color: #ffffff !important;
     font-weight: 800 !important;
     font-size: 1rem !important;
 }
 
-/* ================================
-   BUTTONS
-================================ */
-
 div.stButton > button {
-
     min-height: 52px !important;
-
     border-radius: 15px !important;
-
     border: none !important;
-
     background:
         linear-gradient(
             90deg,
@@ -312,99 +205,50 @@ div.stButton > button {
             #174cff 48%,
             #ff174d 100%
         ) !important;
-
     color: #ffffff !important;
-
     font-size: 1.05rem !important;
-
     font-weight: 900 !important;
-
-    box-shadow:
-        0 8px 25px rgba(0,80,255,0.30);
-
+    box-shadow: 0 8px 25px rgba(0,80,255,0.30);
     transition:
         transform 0.15s ease,
         box-shadow 0.15s ease;
 }
 
 div.stButton > button:hover {
-
     transform: translateY(-2px);
-
-    box-shadow:
-        0 10px 30px rgba(255,30,80,0.35);
+    box-shadow: 0 10px 30px rgba(255,30,80,0.35);
 }
 
-/* ================================
-   DOWNLOAD BUTTON
-================================ */
-
 [data-testid="stDownloadButton"] button {
-
     min-height: 50px !important;
-
     border-radius: 14px !important;
-
     background:
         linear-gradient(
             90deg,
             #008cff,
             #005eff
         ) !important;
-
     color: #ffffff !important;
-
     font-size: 1rem !important;
-
     font-weight: 900 !important;
-
     border: none !important;
-
-    box-shadow:
-        0 7px 20px rgba(0,100,255,0.30);
+    box-shadow: 0 7px 20px rgba(0,100,255,0.30);
 }
-
-/* ================================
-   TEXT AREA / SRT PREVIEW
-================================ */
 
 [data-testid="stTextArea"] textarea {
-
-    background:
-        #f7f9ff !important;
-
-    color:
-        #111827 !important;
-
-    border:
-        2px solid rgba(50,120,255,0.45) !important;
-
-    border-radius:
-        16px !important;
-
-    font-size:
-        15px !important;
-
-    font-weight:
-        600 !important;
-
-    line-height:
-        1.7 !important;
+    background: #f7f9ff !important;
+    color: #111827 !important;
+    border: 2px solid rgba(50,120,255,0.45) !important;
+    border-radius: 16px !important;
+    font-size: 15px !important;
+    font-weight: 600 !important;
+    line-height: 1.7 !important;
 }
 
-/* ================================
-   INFO BOX
-================================ */
-
 [data-testid="stAlert"] {
-
     border-radius: 15px !important;
-
-    border:
-        1px solid rgba(90,160,255,0.35) !important;
-
-    background:
-        rgba(10,55,120,0.55) !important;
+    border: 1px solid rgba(90,160,255,0.35) !important;
+    background: rgba(10,55,120,0.55) !important;
 }
 
 [data-testid="stAlert"] p,
@@ -412,10 +256,6 @@ div.stButton > button:hover {
     color: #ffffff !important;
     font-weight: 700 !important;
 }
-
-/* ================================
-   METRICS
-================================ */
 
 [data-testid="stMetricValue"] {
     color: #ffffff !important;
@@ -427,10 +267,6 @@ div.stButton > button:hover {
     color: #c9d7ff !important;
     font-weight: 700 !important;
 }
-
-/* ================================
-   MOBILE
-================================ */
 
 @media (max-width: 600px) {
 
@@ -557,7 +393,9 @@ def ffprobe_duration(path):
     )
 
     if not m:
-        raise RuntimeError("Video/audio duration ကို ဖတ်မရပါ။")
+        raise RuntimeError(
+            "Video/audio duration ကို ဖတ်မရပါ။"
+        )
 
     return (
         int(m.group(1)) * 3600
@@ -575,6 +413,30 @@ def get_secret(name):
         pass
 
     return os.getenv(name, "").strip()
+
+
+# =========================================================
+# SAFE FILE NAME
+# =========================================================
+
+def safe_filename(name):
+    name = str(name or "").strip()
+
+    if name.lower().endswith(".m4a"):
+        name = name[:-4]
+
+    name = re.sub(
+        r"[^A-Za-z0-9._-]+",
+        "_",
+        name,
+    )
+
+    name = name.strip("._-")
+
+    if not name:
+        name = "myanmar_voiceover"
+
+    return name + ".m4a"
 
 
 # =========================================================
@@ -680,7 +542,10 @@ def deepgram_transcribe(audio_path):
             if response.status_code == 200:
                 obj = response.json()
 
-                results = obj.get("results", {})
+                results = obj.get(
+                    "results",
+                    {},
+                )
 
                 utterances = results.get(
                     "utterances",
@@ -924,9 +789,11 @@ def translate_batch(client, items):
 
                 for item in data:
                     item_id = int(item["id"])
+
                     Burmese = clean_text(
                         item["burmese"]
                     )
+
                     by_id[item_id] = Burmese
 
                 expected_ids = range(
@@ -977,6 +844,7 @@ def build_segments(client, utterances, progress):
     rows = []
 
     for utterance in utterances:
+
         text = clean_text(
             utterance.get(
                 "transcript",
@@ -1024,6 +892,7 @@ def build_segments(client, utterances, progress):
         len(rows),
         batch_size,
     ):
+
         batch = rows[
             position:
             position + batch_size
@@ -1146,6 +1015,7 @@ def parse_srt(text):
     output = []
 
     for block in blocks:
+
         lines = [
             line.strip("\ufeff")
             for line in block.split("\n")
@@ -1178,6 +1048,7 @@ def parse_srt(text):
             continue
 
         def parse_time(value):
+
             value = value.replace(
                 ",",
                 ".",
@@ -1233,6 +1104,7 @@ def parse_srt(text):
     cleaned = []
 
     for item in output:
+
         if item["end"] <= item["start"]:
             continue
 
@@ -1291,7 +1163,9 @@ def make_tts(
     errors = []
 
     for attempt in range(3):
+
         try:
+
             if output.exists():
                 output.unlink()
 
@@ -1316,6 +1190,7 @@ def make_tts(
             )
 
         except Exception as e:
+
             errors.append(str(e))
 
             time.sleep(
@@ -1333,6 +1208,7 @@ def make_tts(
 # =========================================================
 
 def atempo_chain(speed):
+
     speed = max(
         0.25,
         min(float(speed), 4.0),
@@ -1361,6 +1237,7 @@ def fit_clip(
     slot,
     user_speed,
 ):
+
     raw_duration = ffprobe_duration(
         source
     )
@@ -1433,6 +1310,7 @@ def build_voiceover(
     work,
     progress,
 ):
+
     clips = []
 
     total = len(segments)
@@ -1441,6 +1319,7 @@ def build_voiceover(
         segments,
         1,
     ):
+
         start = max(
             0.0,
             float(segment["start"]),
@@ -1520,6 +1399,7 @@ def build_voiceover(
         start,
         _,
     ) in enumerate(clips):
+
         milliseconds = max(
             0,
             int(round(start * 1000)),
@@ -1538,11 +1418,20 @@ def build_voiceover(
             f"[{label}]"
         )
 
+    # =====================================================
+    # IMPORTANT:
+    # Final loudness processing
+    #
+    # loudnorm = makes voice consistently louder/clearer
+    # alimiter = prevents clipping/distortion
+    # =====================================================
+
     filters.append(
         "".join(labels)
         + f"amix=inputs={len(labels)}:"
         "duration=longest:"
         "dropout_transition=0,"
+        "loudnorm=I=-16:TP=-1.5:LRA=7,"
         "alimiter=limit=0.95"
         "[out]"
     )
@@ -1578,7 +1467,10 @@ def build_voiceover(
             + (result.stderr or "")
         )
 
-    # Final audio validation
+    # =====================================================
+    # FINAL AUDIO VALIDATION
+    # =====================================================
+
     check = run_cmd(
         [
             FFMPEG,
@@ -1671,6 +1563,7 @@ if make_srt_button:
         st.stop()
 
     try:
+
         with tempfile.TemporaryDirectory() as temp_dir:
 
             work = Path(temp_dir)
@@ -1771,6 +1664,7 @@ if make_srt_button:
             )
 
     except Exception as error:
+
         st.error(
             "SRT ထုတ်ရာမှာ "
             "အမှားဖြစ်ပါတယ်။"
@@ -1867,61 +1761,80 @@ srt_file = st.file_uploader(
 )
 
 
-voice_col, style_col = st.columns(2)
+# =========================================================
+# VOICE SETTINGS FORM
+#
+# IMPORTANT:
+# Slider / selectbox တွေကို form ထဲထည့်ထားတဲ့အတွက်
+# user က slider ကို ရွှေ့ရုံနဲ့ Streamlit rerun မဖြစ်တော့ပါ။
+# "Voiceover စတင်ထုတ်မယ်" ကိုနှိပ်မှ settings submit ဖြစ်မယ်။
+# =========================================================
 
-with voice_col:
+with st.form(
+    "voiceover_settings_form",
+    clear_on_submit=False,
+):
 
-    voice_name = st.selectbox(
-        "🎙️ Voice",
-        list(VOICES.keys()),
-        key="voice_choice",
+    voice_col, style_col = st.columns(2)
+
+    with voice_col:
+
+        voice_name = st.selectbox(
+            "🎙️ Voice",
+            list(VOICES.keys()),
+            key="voice_choice",
+        )
+
+    with style_col:
+
+        style = st.selectbox(
+            "🎭 Voice Style",
+            list(VOICE_STYLES.keys()),
+            key="style_choice",
+        )
+
+    speed = st.slider(
+        "⚡ Speaking Speed",
+        0.70,
+        1.30,
+        1.00,
+        0.05,
+        help=(
+            "နောက်ဆုံး audio timing ကို "
+            "SRT slot ထဲဝင်အောင် app က "
+            "auto-fit လုပ်ပေးမယ်။"
+        ),
     )
 
-with style_col:
-
-    style = st.selectbox(
-        "🎭 Voice Style",
-        list(VOICE_STYLES.keys()),
-        key="style_choice",
+    output_filename_input = st.text_input(
+        "📁 Voice File Name",
+        value="myanmar_voiceover",
+        placeholder="ဥပမာ - Movie_Part_01",
+        help=(
+            ".m4a မထည့်လည်းရပါတယ်။ "
+            "App က အလိုအလျောက် .m4a ထည့်ပေးမယ်။"
+        ),
     )
 
+    voice_description = {
+        "သီဟ (အမျိုးသား)":
+            "👨 Male • clear / natural",
 
-speed = st.slider(
-    "⚡ Speaking Speed",
-    0.70,
-    1.30,
-    1.00,
-    0.05,
-    help=(
-        "နောက်ဆုံး audio timing ကို "
-        "SRT slot ထဲဝင်အောင် app က "
-        "auto-fit လုပ်ပေးမယ်။"
-    ),
-)
+        "နီလာ (အမျိုးသမီး)":
+            "👩 Female • clear / natural",
+    }
 
+    st.info(
+        f"🎙️ Selected: **"
+        f"{voice_description[voice_name]}"
+        f"**  •  🎭 **{style}**  •  "
+        f"⚡ **{speed:.2f}x**"
+    )
 
-voice_description = {
-    "သီဟ (အမျိုးသား)":
-        "👨 Male • clear / natural",
-
-    "နီလာ (အမျိုးသမီး)":
-        "👩 Female • clear / natural",
-}
-
-
-st.info(
-    f"🎙️ Selected: **"
-    f"{voice_description[voice_name]}"
-    f"**  •  🎭 **{style}**  •  "
-    f"⚡ **{speed:.2f}x**"
-)
-
-
-make_voice_button = st.button(
-    "🎧 Voiceover စတင်ထုတ်မယ်",
-    type="primary",
-    use_container_width=True,
-)
+    make_voice_button = st.form_submit_button(
+        "🎧 Voiceover စတင်ထုတ်မယ်",
+        use_container_width=True,
+    )
 
 
 # =========================================================
@@ -1969,6 +1882,17 @@ if make_voice_button:
             source_srt
         )
 
+        # =================================================
+        # Save submitted settings as immutable job settings
+        # =================================================
+
+        selected_voice = VOICES[voice_name]
+        selected_style = style
+        selected_speed = float(speed)
+        selected_filename = safe_filename(
+            output_filename_input
+        )
+
         with tempfile.TemporaryDirectory() as temp_dir:
 
             work = Path(temp_dir)
@@ -1984,9 +1908,9 @@ if make_voice_button:
 
             voiceover = build_voiceover(
                 segments,
-                VOICES[voice_name],
-                style,
-                speed,
+                selected_voice,
+                selected_style,
+                selected_speed,
                 work,
                 lambda p, t: (
                     progress_bar.progress(
@@ -2004,11 +1928,10 @@ if make_voice_button:
                 "voice_bytes"
             ] = voice_bytes
 
+            # User selected filename
             st.session_state[
-                "voice_name"
-            ] = (
-                "myanmar_voiceover.m4a"
-            )
+                "voice_download_name"
+            ] = selected_filename
 
             st.session_state[
                 "voice_mime"
@@ -2018,13 +1941,25 @@ if make_voice_button:
                 "voice_segments"
             ] = segments
 
+            st.session_state[
+                "voice_selected_name"
+            ] = voice_name
+
+            st.session_state[
+                "voice_selected_style"
+            ] = selected_style
+
+            st.session_state[
+                "voice_selected_speed"
+            ] = selected_speed
+
             progress_bar.progress(
                 1.0
             )
 
             status.success(
                 "✅ Voiceover ပြီးပါပြီ — "
-                "timing validation "
+                "timing + loudness validation "
                 "လုပ်ပြီးပါပြီ။"
             )
 
@@ -2065,13 +2000,18 @@ if st.session_state.get(
         ),
     )
 
+    st.caption(
+        "🔊 Loudness normalized • "
+        "Limiter protected"
+    )
+
     st.download_button(
         "⬇️ Download Voiceover",
         st.session_state[
             "voice_bytes"
         ],
         st.session_state.get(
-            "voice_name",
+            "voice_download_name",
             "myanmar_voiceover.m4a",
         ),
         st.session_state.get(
