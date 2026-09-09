@@ -2991,10 +2991,16 @@ if editor_video:
                     st.exception(e)
 
 
+    except Exception as e:
+        st.error(
+            "Visual Editor မှာ အမှားဖြစ်ပါတယ်။"
+        )
+        st.exception(e)
+
+
 if st.session_state.get(
     "editor_result"
 ):
-
     st.markdown(
         "### 🎬 Final Video"
     )
