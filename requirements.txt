@@ -3,3 +3,4 @@ requests
 edge-tts
 imageio-ffmpeg
 google-genai
+Pillow
