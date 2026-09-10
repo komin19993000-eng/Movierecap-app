@@ -45,7 +45,6 @@ DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
 MAX_SOURCE_CHARS = 42
-MAX_BURMESE_CHARS = 50
 MAX_SEGMENT_DURATION = 6.0
 PAUSE_SPLIT = 0.65
 
@@ -621,67 +620,6 @@ def extract_json_array(text: str):
     )
 
 
-def shorten_burmese_text(text: str) -> str:
-
-    text = clean_text(text)
-
-    if len(text) <= MAX_BURMESE_CHARS:
-        return text
-
-    punctuation_positions = []
-
-    for mark in [
-        "။",
-        "၊",
-        ",",
-        ".",
-        "!",
-        "?",
-        "…",
-    ]:
-        pos = text.rfind(
-            mark,
-            0,
-            MAX_BURMESE_CHARS + 1,
-        )
-
-        if pos >= 20:
-            punctuation_positions.append(
-                pos + 1
-            )
-
-    if punctuation_positions:
-        return clean_text(
-            text[:max(punctuation_positions)]
-        )
-
-    words = text.split()
-
-    result = []
-    length = 0
-
-    for word in words:
-
-        extra = len(word) + (
-            1 if result else 0
-        )
-
-        if length + extra > MAX_BURMESE_CHARS:
-            break
-
-        result.append(word)
-        length += extra
-
-    shortened = clean_text(
-        " ".join(result)
-    )
-
-    if shortened:
-        return shortened
-
-    return text[:MAX_BURMESE_CHARS].strip()
-
-
 def translate_batch(client_ignored, rows):
 
     payload = [
@@ -704,23 +642,31 @@ that sounds like a real Myanmar movie dub.
 
 IMPORTANT:
 The Burmese sentence will be spoken by TTS.
-Therefore it MUST be concise and easy to speak naturally.
+Therefore it should be concise and natural,
+but NEVER sacrifice meaning just to make the sentence shorter.
 
 Rules:
-- Preserve the original meaning.
+- Preserve the COMPLETE original meaning.
 - Preserve names and important proper nouns.
 - Preserve emotion, intention and tone.
 - Do NOT summarize away important meaning.
+- Do NOT remove important information.
+- Do NOT cut a sentence halfway.
+- Do NOT create disconnected fragments.
 - Do NOT add explanations.
 - Do NOT add quotation marks unless required by meaning.
 - Do NOT translate word-for-word if that sounds unnatural.
 - Use natural conversational Burmese.
 - Avoid unnecessary filler words.
 - Avoid repeating information.
-- Prefer shorter natural Burmese wording.
-- Aim for approximately 25–50 Burmese characters.
-- Never intentionally create a very long sentence.
-- The subtitle must be suitable for dubbing within its timestamp.
+- Use concise natural Burmese wording when possible.
+- If the original dialogue contains several connected ideas,
+  keep those ideas connected in the Burmese translation.
+- The translation must remain a complete, coherent sentence
+  or a natural connected phrase.
+- Do NOT impose an artificial character limit.
+- Do NOT shorten the translation merely to fit a character count.
+- The timestamp duration is provided as context only.
 - Return ONLY JSON.
 - Return exactly {len(payload)} objects.
 - Keep exact id values.
@@ -782,10 +728,6 @@ INPUT:
                         f"Subtitle {idx} အတွက် "
                         "ဘာသာပြန်စာ မထွက်ပါ။"
                     )
-
-                text = shorten_burmese_text(
-                    text
-                )
 
                 translated[idx] = text
 
