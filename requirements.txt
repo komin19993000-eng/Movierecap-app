@@ -2,5 +2,4 @@ Streamlit
 requests
 edge-tts
 imageio-ffmpeg
-google-generativeai
-pysrt
+google-genai
