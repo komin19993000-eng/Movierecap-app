@@ -57,395 +57,318 @@ VOICE_GAP = 0.04
 
 
 # ============================================================
-# COLORFUL UI
+# UI STYLE
 # ============================================================
 
 st.markdown(
     """
 <style>
 
-/* ==========================================================
-   GLOBAL
-   ========================================================== */
+/* =========================================================
+   MAIN APP
+   ========================================================= */
 
 .stApp {
     background:
         radial-gradient(
             circle at 5% 0%,
-            rgba(0, 229, 255, 0.14),
-            transparent 28%
-        ),
-        radial-gradient(
-            circle at 95% 8%,
-            rgba(168, 85, 247, 0.18),
+            rgba(0, 242, 254, 0.18),
             transparent 30%
         ),
         radial-gradient(
+            circle at 95% 5%,
+            rgba(124, 58, 237, 0.22),
+            transparent 32%
+        ),
+        radial-gradient(
             circle at 50% 100%,
-            rgba(236, 72, 153, 0.08),
+            rgba(236, 72, 153, 0.12),
             transparent 35%
         ),
-        #070b14 !important;
+        #070a13 !important;
 
-    color: #f8fafc !important;
+    color: #ffffff !important;
 }
 
 .block-container {
     max-width: 1120px;
-    padding-top: 1.4rem !important;
-    padding-bottom: 3rem !important;
+    padding-top: 2rem;
+    padding-bottom: 3rem;
 }
 
 
-/* ==========================================================
-   REMOVE DEFAULT TOP SPACE
-   ========================================================== */
-
-header[data-testid="stHeader"] {
-    background: transparent !important;
-}
-
-
-/* ==========================================================
+/* =========================================================
    HERO
-   ========================================================== */
+   ========================================================= */
 
 .hero {
-    position: relative;
-    overflow: hidden;
+    padding: 30px;
 
-    padding: 30px 26px;
-    margin-bottom: 26px;
-
-    border-radius: 24px;
+    border-radius: 26px;
 
     background:
         linear-gradient(
             135deg,
-            rgba(14, 23, 42, 0.98),
-            rgba(30, 27, 75, 0.96),
-            rgba(49, 46, 129, 0.90)
+            rgba(25, 35, 70, 0.98),
+            rgba(22, 10, 45, 0.98)
         );
 
-    border: 1px solid rgba(96, 165, 250, 0.35);
+    border: 1px solid rgba(0, 242, 254, 0.25);
 
     box-shadow:
-        0 18px 50px rgba(0, 0, 0, 0.35),
-        0 0 35px rgba(59, 130, 246, 0.10);
-}
+        0 0 35px rgba(0, 242, 254, 0.08),
+        0 20px 60px rgba(0, 0, 0, 0.45);
 
-.hero::after {
-    content: "";
-    position: absolute;
-    width: 180px;
-    height: 180px;
-    right: -70px;
-    top: -80px;
-
-    background: rgba(34, 211, 238, 0.16);
-    border-radius: 50%;
-    filter: blur(5px);
+    margin-bottom: 26px;
 }
 
 .hero h1 {
-    position: relative;
-    z-index: 2;
-
     margin: 0 0 8px 0;
 
-    font-size: clamp(31px, 7vw, 50px);
-    line-height: 1.1;
+    font-size: clamp(30px, 5vw, 48px);
 
     font-weight: 800;
 
-    color: #ffffff !important;
+    background:
+        linear-gradient(
+            90deg,
+            #00f2fe,
+            #7c3aed,
+            #ec4899
+        );
 
-    text-shadow:
-        0 0 18px rgba(56, 189, 248, 0.35);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+
+    background-clip: text;
 }
 
 .hero p {
-    position: relative;
-    z-index: 2;
-
     margin: 0;
 
-    color: #dbeafe !important;
+    color: #d5dded !important;
 
     font-size: 15px;
-    line-height: 1.7;
 }
 
 
-/* ==========================================================
-   SECTION CARDS
-   ========================================================== */
+/* =========================================================
+   STATUS PILLS
+   ========================================================= */
 
-.section-card {
-    margin-top: 26px;
-    margin-bottom: 16px;
+.status-pill {
+    display: inline-block;
 
-    padding: 18px 20px;
+    padding: 8px 13px;
 
-    border-radius: 18px;
+    border-radius: 999px;
 
-    color: white !important;
-
-    box-shadow:
-        0 10px 30px rgba(0, 0, 0, 0.22);
-}
-
-.section-blue {
     background:
         linear-gradient(
             135deg,
-            #075985,
-            #0369a1,
-            #2563eb
+            rgba(0, 242, 254, 0.15),
+            rgba(124, 58, 237, 0.18)
         );
 
-    border: 1px solid rgba(56, 189, 248, 0.55);
-}
-
-.section-purple {
-    background:
-        linear-gradient(
-            135deg,
-            #581c87,
-            #7e22ce,
-            #9333ea
-        );
-
-    border: 1px solid rgba(192, 132, 252, 0.55);
-}
-
-.section-card h2 {
-    margin: 0;
+    border: 1px solid rgba(0, 242, 254, 0.25);
 
     color: #ffffff !important;
 
-    font-size: 23px;
-    font-weight: 800;
+    font-size: 12px;
+
+    font-weight: 600;
+
+    margin-right: 6px;
+    margin-bottom: 7px;
+
+    box-shadow:
+        0 0 12px rgba(0, 242, 254, 0.05);
 }
 
-.section-card p {
-    margin: 7px 0 0 0;
 
-    color: #e0e7ff !important;
+/* =========================================================
+   HEADINGS
+   ========================================================= */
 
-    font-size: 13px;
-    line-height: 1.6;
+h2 {
+    color: #ffffff !important;
+    font-weight: 800 !important;
+}
+
+h3 {
+    color: #67e8f9 !important;
+    font-weight: 800 !important;
 }
 
 
-/* ==========================================================
-   SMALL DESCRIPTION
-   ========================================================== */
+/* =========================================================
+   DESCRIPTION
+   ========================================================= */
 
 .mini {
-    color: #cbd5e1 !important;
+    color: #aebbd0 !important;
 
     font-size: 13px;
 
-    margin: 0 0 14px 0;
-
-    line-height: 1.6;
+    margin-top: -8px;
+    margin-bottom: 16px;
 }
 
 
-/* ==========================================================
-   ALL NORMAL TEXT
-   ========================================================== */
-
-.stMarkdown,
-.stMarkdown p,
-.stMarkdown span,
-.stMarkdown label {
-    color: #f1f5f9;
-}
-
-
-/* ==========================================================
-   INPUT LABELS
-   ========================================================== */
-
-label,
-[data-testid="stWidgetLabel"] p {
-    color: #e2e8f0 !important;
-
-    font-weight: 700 !important;
-}
-
-
-/* ==========================================================
-   TEXT INPUT
-   ========================================================== */
-
-div[data-baseweb="input"] {
-    background: #111827 !important;
-
-    border-radius: 13px !important;
-
-    border: 1px solid #334155 !important;
-}
-
-div[data-baseweb="input"] input {
-    background: #111827 !important;
-
-    color: #ffffff !important;
-
-    caret-color: #22d3ee !important;
-}
-
-div[data-baseweb="input"] input::placeholder {
-    color: #64748b !important;
-}
-
-
-/* ==========================================================
-   TEXT AREA
-   ========================================================== */
-
-div[data-baseweb="textarea"] {
-    background: #0b1220 !important;
-
-    border-radius: 16px !important;
-
-    border: 2px solid #334155 !important;
-
-    box-shadow:
-        0 8px 28px rgba(0, 0, 0, 0.22);
-}
-
-div[data-baseweb="textarea"]:focus-within {
-    border-color: #22d3ee !important;
-
-    box-shadow:
-        0 0 0 2px rgba(34, 211, 238, 0.15),
-        0 0 25px rgba(34, 211, 238, 0.12);
-}
-
-div[data-baseweb="textarea"] textarea {
-    background: #0b1220 !important;
-
-    color: #ffffff !important;
-
-    -webkit-text-fill-color: #ffffff !important;
-
-    caret-color: #22d3ee !important;
-
-    font-size: 15px !important;
-
-    line-height: 1.8 !important;
-
-    font-family:
-        "Noto Sans Myanmar",
-        "Myanmar Text",
-        sans-serif !important;
-}
-
-div[data-baseweb="textarea"] textarea::placeholder {
-    color: #64748b !important;
-}
-
-
-/* ==========================================================
-   SELECTBOX
-   ========================================================== */
-
-div[data-baseweb="select"] > div {
-    background: #111827 !important;
-
-    border: 1px solid #334155 !important;
-
-    border-radius: 13px !important;
-
-    color: #ffffff !important;
-}
-
-div[data-baseweb="select"] * {
-    color: #ffffff !important;
-}
-
-
-/* ==========================================================
-   SLIDER
-   ========================================================== */
-
-div[data-testid="stSlider"] {
-    padding-top: 4px;
-    padding-bottom: 8px;
-}
-
-div[data-testid="stSlider"] [role="slider"] {
-    background: #22d3ee !important;
-
-    border-color: #ffffff !important;
-
-    box-shadow:
-        0 0 12px rgba(34, 211, 238, 0.7);
-}
-
-
-/* ==========================================================
+/* =========================================================
    FILE UPLOADER
-   ========================================================== */
+   ========================================================= */
 
 div[data-testid="stFileUploader"] {
     background:
         linear-gradient(
             135deg,
-            rgba(15, 23, 42, 0.96),
-            rgba(17, 24, 39, 0.96)
-        ) !important;
+            rgba(0, 242, 254, 0.07),
+            rgba(124, 58, 237, 0.09)
+        );
 
-    border: 2px dashed #475569 !important;
+    border: 1px solid rgba(0, 242, 254, 0.22);
 
-    border-radius: 17px !important;
+    border-radius: 18px;
 
-    padding: 8px !important;
+    padding: 8px;
 }
 
-div[data-testid="stFileUploader"]:hover {
-    border-color: #22d3ee !important;
+div[data-testid="stFileUploader"] label {
+    color: #ffffff !important;
+}
+
+div[data-testid="stFileUploader"] section {
+    color: #ffffff !important;
+}
+
+
+/* =========================================================
+   LABELS
+   ========================================================= */
+
+label {
+    color: #ffffff !important;
+}
+
+
+/* =========================================================
+   TEXT INPUT
+   ========================================================= */
+
+div[data-baseweb="input"] {
+    background: #ffffff !important;
+
+    border-radius: 13px !important;
+
+    border: 2px solid rgba(0, 242, 254, 0.35) !important;
+}
+
+div[data-baseweb="input"] input {
+    color: #111827 !important;
+
+    -webkit-text-fill-color: #111827 !important;
+
+    background: #ffffff !important;
+
+    font-weight: 600 !important;
+}
+
+
+/* =========================================================
+   TEXT AREA — SRT PREVIEW FIX
+   ========================================================= */
+
+div[data-testid="stTextArea"] textarea {
+    color: #111827 !important;
+
+    -webkit-text-fill-color: #111827 !important;
+
+    background: #ffffff !important;
+
+    caret-color: #111827 !important;
+
+    font-size: 14px !important;
+
+    line-height: 1.65 !important;
+
+    font-weight: 500 !important;
+
+    border: 2px solid #38bdf8 !important;
+
+    border-radius: 16px !important;
+
+    padding: 16px !important;
+
+    opacity: 1 !important;
 
     box-shadow:
-        0 0 22px rgba(34, 211, 238, 0.12);
+        0 0 18px rgba(56, 189, 248, 0.10);
 }
 
-div[data-testid="stFileUploader"] * {
-    color: #e2e8f0 !important;
+div[data-testid="stTextArea"] textarea::placeholder {
+    color: #6b7280 !important;
+
+    -webkit-text-fill-color: #6b7280 !important;
+
+    opacity: 1 !important;
 }
 
 
-/* ==========================================================
+/* =========================================================
+   SELECT BOX
+   ========================================================= */
+
+div[data-baseweb="select"] > div {
+    background: #ffffff !important;
+
+    color: #111827 !important;
+
+    border-radius: 13px !important;
+
+    border: 2px solid rgba(124, 58, 237, 0.35) !important;
+}
+
+div[data-baseweb="select"] span {
+    color: #111827 !important;
+}
+
+
+/* =========================================================
+   SLIDER
+   ========================================================= */
+
+div[data-testid="stSlider"] {
+    color: #ffffff !important;
+}
+
+
+/* =========================================================
    BUTTONS
-   ========================================================== */
+   ========================================================= */
 
 div.stButton > button,
-div[data-testid="stFormSubmitButton"] button,
-div[data-testid="stDownloadButton"] button {
-    min-height: 50px !important;
+div[data-testid="stFormSubmitButton"] button {
+    min-height: 50px;
 
-    border-radius: 14px !important;
+    border-radius: 15px !important;
 
-    font-weight: 800 !important;
-
-    font-size: 15px !important;
+    border: 1px solid rgba(255,255,255,0.20) !important;
 
     color: #ffffff !important;
 
-    border: 1px solid rgba(255,255,255,0.18) !important;
+    font-weight: 800 !important;
 
     background:
         linear-gradient(
             135deg,
             #2563eb,
-            #7c3aed
+            #7c3aed,
+            #db2777
         ) !important;
 
     box-shadow:
-        0 8px 22px rgba(37, 99, 235, 0.25);
+        0 8px 25px rgba(124, 58, 237, 0.25);
 
     transition:
         transform 0.15s ease,
@@ -453,85 +376,58 @@ div[data-testid="stDownloadButton"] button {
 }
 
 div.stButton > button:hover,
-div[data-testid="stFormSubmitButton"] button:hover,
-div[data-testid="stDownloadButton"] button:hover {
-    color: #ffffff !important;
-
-    transform: translateY(-1px);
+div[data-testid="stFormSubmitButton"] button:hover {
+    transform: translateY(-2px);
 
     box-shadow:
-        0 12px 28px rgba(124, 58, 237, 0.35);
+        0 12px 30px rgba(124, 58, 237, 0.40);
 }
 
 
-/* ==========================================================
-   PRIMARY BUTTON
-   ========================================================== */
+/* =========================================================
+   DOWNLOAD BUTTON
+   ========================================================= */
 
-button[kind="primary"] {
+div[data-testid="stDownloadButton"] button {
+    min-height: 50px;
+
+    border-radius: 15px !important;
+
+    color: #ffffff !important;
+
+    font-weight: 800 !important;
+
+    border: 1px solid rgba(0, 242, 254, 0.35) !important;
+
     background:
         linear-gradient(
             135deg,
-            #06b6d4,
             #2563eb,
-            #7c3aed
+            #7c3aed,
+            #db2777
         ) !important;
 
-    border: 1px solid rgba(125, 211, 252, 0.65) !important;
-
     box-shadow:
-        0 8px 28px rgba(6, 182, 212, 0.25),
-        0 0 18px rgba(124, 58, 237, 0.12);
+        0 8px 25px rgba(37, 99, 235, 0.25);
 }
 
 
-/* ==========================================================
-   SUCCESS
-   ========================================================== */
-
-div[data-testid="stAlert"][data-baseweb="notification"] {
-    border-radius: 15px !important;
-}
+/* =========================================================
+   ALERTS
+   ========================================================= */
 
 div[data-testid="stAlert"] {
-    color: #ffffff !important;
-}
+    border-radius: 15px !important;
 
-div[data-testid="stAlert"] p {
-    color: #ffffff !important;
-}
+    border: 1px solid rgba(255,255,255,0.10) !important;
 
-
-/* ==========================================================
-   PROGRESS BAR
-   ========================================================== */
-
-div[data-testid="stProgressBar"] > div {
-    background: #172033 !important;
-
-    border-radius: 999px !important;
-}
-
-div[data-testid="stProgressBar"] > div > div {
-    background:
-        linear-gradient(
-            90deg,
-            #06b6d4,
-            #3b82f6,
-            #8b5cf6,
-            #ec4899
-        ) !important;
-
-    border-radius: 999px !important;
-
-    box-shadow:
-        0 0 12px rgba(59, 130, 246, 0.45);
+    font-weight: 600 !important;
 }
 
 
-/* ==========================================================
+/* =========================================================
    DIVIDER
-   ========================================================== */
+   ========================================================= */
 
 hr {
     border: none !important;
@@ -542,108 +438,39 @@ hr {
         linear-gradient(
             90deg,
             transparent,
-            #334155,
+            #00f2fe,
             #7c3aed,
-            #334155,
+            #ec4899,
             transparent
         ) !important;
 
-    margin: 30px 0 !important;
+    margin: 35px 0 !important;
 }
 
 
-/* ==========================================================
-   SRT PREVIEW CARD
-   ========================================================== */
-
-.srt-title {
-    margin-top: 22px;
-
-    margin-bottom: 10px;
-
-    color: #67e8f9 !important;
-
-    font-size: 22px;
-
-    font-weight: 800;
-
-    text-shadow:
-        0 0 12px rgba(34, 211, 238, 0.25);
-}
-
-
-/* ==========================================================
+/* =========================================================
    AUDIO
-   ========================================================== */
+   ========================================================= */
 
-div[data-testid="stAudio"] {
-    background:
-        linear-gradient(
-            135deg,
-            #111827,
-            #1e1b4b
-        ) !important;
+audio {
+    width: 100% !important;
 
-    border-radius: 16px !important;
-
-    padding: 8px !important;
-
-    border: 1px solid #475569 !important;
+    border-radius: 14px !important;
 }
 
 
-/* ==========================================================
+/* =========================================================
    FOOTER
-   ========================================================== */
+   ========================================================= */
 
 .footer {
     text-align: center;
 
-    color: #64748b !important;
+    color: #7886a0 !important;
 
     font-size: 12px;
 
-    padding-top: 10px;
-}
-
-
-/* ==========================================================
-   MOBILE
-   ========================================================== */
-
-@media (max-width: 700px) {
-
-    .block-container {
-        padding-left: 0.75rem !important;
-        padding-right: 0.75rem !important;
-    }
-
-    .hero {
-        padding: 23px 18px;
-        border-radius: 20px;
-    }
-
-    .hero h1 {
-        font-size: 32px;
-    }
-
-    .hero p {
-        font-size: 13px;
-    }
-
-    .section-card {
-        padding: 16px;
-        border-radius: 16px;
-    }
-
-    .section-card h2 {
-        font-size: 20px;
-    }
-
-    div[data-baseweb="textarea"] textarea {
-        font-size: 14px !important;
-    }
-
+    padding-top: 12px;
 }
 
 </style>
@@ -651,10 +478,6 @@ div[data-testid="stAudio"] {
     unsafe_allow_html=True,
 )
 
-
-# ============================================================
-# HERO
-# ============================================================
 
 st.markdown(
     """
@@ -664,6 +487,13 @@ st.markdown(
         Movie dialogue ကို မြန်မာ SRT အဖြစ်ပြောင်းပြီး
         သဘာဝကျ Burmese Voiceover ထုတ်ပေးတဲ့ Studio
     </p>
+
+    <div style="margin-top:16px">
+        <span class="status-pill">🎙️ Deepgram STT</span>
+        <span class="status-pill">🤖 Gemini Translation</span>
+        <span class="status-pill">🗣️ Burmese Neural Voice</span>
+        <span class="status-pill">⚡ Auto Timestamp</span>
+    </div>
 </div>
 """,
     unsafe_allow_html=True,
@@ -868,9 +698,7 @@ def shorten_burmese_text(text: str) -> str:
         )
 
         if pos >= 20:
-            punctuation_positions.append(
-                pos + 1
-            )
+            punctuation_positions.append(pos + 1)
 
     if punctuation_positions:
         return clean_text(
@@ -884,15 +712,11 @@ def shorten_burmese_text(text: str) -> str:
     length = 0
 
     for word in words:
-
         extra = len(word) + (
             1 if result else 0
         )
 
-        if (
-            length + extra
-            > MAX_BURMESE_CHARS
-        ):
+        if length + extra > MAX_BURMESE_CHARS:
             break
 
         result.append(word)
@@ -905,9 +729,7 @@ def shorten_burmese_text(text: str) -> str:
     if shortened:
         return shortened
 
-    return text[
-        :MAX_BURMESE_CHARS
-    ].strip()
+    return text[:MAX_BURMESE_CHARS].strip()
 
 
 def translate_batch(client, rows):
@@ -966,9 +788,7 @@ INPUT:
     last_error = ""
 
     for attempt in range(3):
-
         try:
-
             response = client.models.generate_content(
                 model=model,
                 contents=prompt,
@@ -989,7 +809,6 @@ INPUT:
             translated = {}
 
             for item in data:
-
                 idx = int(item["id"])
 
                 text = clean_text(
@@ -1002,16 +821,11 @@ INPUT:
                         "ဘာသာပြန်စာ မထွက်ပါ။"
                     )
 
-                text = shorten_burmese_text(
-                    text
-                )
+                text = shorten_burmese_text(text)
 
                 translated[idx] = text
 
-            if (
-                len(translated)
-                != len(payload)
-            ):
+            if len(translated) != len(payload):
                 raise RuntimeError(
                     "ဘာသာပြန်စာကြောင်းတချို့ မထွက်ပါ။"
                 )
@@ -1019,7 +833,6 @@ INPUT:
             return translated
 
         except Exception as exc:
-
             last_error = str(exc)
 
             low = last_error.lower()
@@ -1048,7 +861,6 @@ INPUT:
                     (2 ** attempt)
                     + random.random()
                 )
-
             else:
                 break
 
@@ -1063,7 +875,6 @@ INPUT:
 # ============================================================
 
 def get_deepgram_key():
-
     key = get_secret(
         "DEEPGRAM_API_KEY"
     )
@@ -1093,7 +904,6 @@ def words_to_segments(words):
     )
 
     segments = []
-
     current = []
 
     def word_text(item):
@@ -1104,7 +914,6 @@ def words_to_segments(words):
         ).strip()
 
     def flush():
-
         nonlocal current
 
         if not current:
@@ -1131,10 +940,7 @@ def words_to_segments(words):
             )
         )
 
-        if (
-            text
-            and end > start
-        ):
+        if text and end > start:
             segments.append(
                 {
                     "start": start,
@@ -1200,10 +1006,8 @@ def words_to_segments(words):
 
             if (
                 pause >= pause_split
-                or len(proposed)
-                > max_chars
-                or duration
-                > max_duration
+                or len(proposed) > max_chars
+                or duration > max_duration
             ):
                 flush()
 
@@ -1244,16 +1048,13 @@ def deepgram_transcribe(
             "audio/wav",
     }
 
-    audio_data = (
-        audio_path.read_bytes()
-    )
+    audio_data = audio_path.read_bytes()
 
     last_error = ""
 
     for attempt in range(3):
 
         try:
-
             response = requests.post(
                 url,
                 params=params,
@@ -1288,7 +1089,6 @@ def deepgram_transcribe(
                     ) or []
 
                     if alternatives:
-
                         words = alternatives[
                             0
                         ].get(
@@ -1298,10 +1098,8 @@ def deepgram_transcribe(
 
                 if words:
 
-                    segments = (
-                        words_to_segments(
-                            words
-                        )
+                    segments = words_to_segments(
+                        words
                     )
 
                     if segments:
@@ -1369,7 +1167,6 @@ def deepgram_transcribe(
                 break
 
         except Exception as exc:
-
             last_error = str(exc)
 
         if attempt < 2:
@@ -1825,11 +1622,9 @@ def fit_tts_to_slot(
     )
 
     if required_factor <= 1.0:
-
         factor = user_speed
 
     else:
-
         factor = max(
             required_factor,
             user_speed,
@@ -2011,7 +1806,6 @@ def build_voiceover(
     ]
 
     for _, clip in clips:
-
         command.extend(
             [
                 "-i",
@@ -2154,29 +1948,21 @@ if "voice_name" not in st.session_state:
 
 
 # ============================================================
-# STEP 1
+# STEP 1 — VIDEO -> SRT
 # ============================================================
 
 st.markdown(
-    """
-<div class="section-card section-blue">
-    <h2>① 🎥 Video → မြန်မာ SRT</h2>
-    <p>
-        Video audio ကို ခွဲထုတ်ပြီး dialogue timestamp ရယူကာ
-        Gemini နဲ့ သဘာဝကျတဲ့ မြန်မာစာ subtitle ပြုလုပ်ပေးပါတယ်။
-    </p>
-</div>
-""",
-    unsafe_allow_html=True,
+    "## ① Video → မြန်မာ SRT"
 )
 
 st.markdown(
     '<div class="mini">'
-    'Audio → Dialogue → Timestamp → Burmese Translation → SRT'
+    'Audio ကို အလိုအလျောက်ထုတ် → '
+    'dialogue timestamp ခွဲ → '
+    'Gemini နဲ့ သဘာဝကျ မြန်မာလိုဘာသာပြန် → SRT'
     '</div>',
     unsafe_allow_html=True,
 )
-
 
 video_file = st.file_uploader(
     "🎥 Video တင်ပါ",
@@ -2188,7 +1974,6 @@ video_file = st.file_uploader(
     ],
     key="source_video",
 )
-
 
 with st.form(
     "srt_form",
@@ -2217,11 +2002,9 @@ with st.form(
 if make_srt_button:
 
     if not video_file:
-
         st.error(
-            "🎥 Video တစ်ခုအရင်တင်ပါ။"
+            "Video တစ်ခုအရင်တင်ပါ။"
         )
-
         st.stop()
 
     try:
@@ -2245,10 +2028,7 @@ if make_srt_button:
             )
 
             status = st.empty()
-
-            progress = st.progress(
-                0.0
-            )
+            progress = st.progress(0.0)
 
             status.info(
                 "🎧 Video audio ထုတ်နေသည်..."
@@ -2259,12 +2039,11 @@ if make_srt_button:
                 audio_path,
             )
 
-            progress.progress(
-                0.12
-            )
+            progress.progress(0.12)
 
             status.info(
-                "🎙️ Dialogue + timestamp ရယူနေသည်..."
+                "🎙️ Deepgram က dialogue + "
+                "word timestamp ရယူနေသည်..."
             )
 
             source_segments = (
@@ -2273,12 +2052,12 @@ if make_srt_button:
                 )
             )
 
-            progress.progress(
-                0.25
-            )
+            progress.progress(0.25)
 
             status.info(
-                "🤖 Gemini က မြန်မာလို ဘာသာပြန်နေသည်..."
+                "🤖 Gemini က မြန်မာလို "
+                "တိုတောင်းပြီး သဘာဝကျအောင် "
+                "ဘာသာပြန်နေသည်..."
             )
 
             translated_segments = (
@@ -2287,14 +2066,9 @@ if make_srt_button:
                     source_segments,
                     lambda p, text: (
                         progress.progress(
-                            min(
-                                p,
-                                0.98,
-                            )
+                            min(p, 0.98)
                         ),
-                        status.info(
-                            text
-                        ),
+                        status.info(text),
                     ),
                 )
             )
@@ -2319,9 +2093,7 @@ if make_srt_button:
             ):
                 st.session_state.srt_name += ".srt"
 
-            progress.progress(
-                1.0
-            )
+            progress.progress(1.0)
 
             status.success(
                 "✅ SRT ပြီးပါပြီ — "
@@ -2332,29 +2104,22 @@ if make_srt_button:
     except Exception as exc:
 
         st.error(
-            "❌ SRT ထုတ်ရာမှာ အမှားဖြစ်ပါတယ်။"
+            "SRT ထုတ်ရာမှာ အမှားဖြစ်ပါတယ်။"
         )
 
         st.exception(exc)
 
 
-# ============================================================
-# SRT PREVIEW
-# ============================================================
-
 if st.session_state.srt_text:
 
     st.markdown(
-        '<div class="srt-title">'
-        '📄 Myanmar SRT Preview'
-        '</div>',
-        unsafe_allow_html=True,
+        "### 📄 Myanmar SRT Preview"
     )
 
     st.text_area(
-        "Myanmar SRT",
-        value=st.session_state.srt_text,
-        height=320,
+        "",
+        st.session_state.srt_text,
+        height=280,
         label_visibility="collapsed",
         key="srt_preview",
     )
@@ -2374,34 +2139,26 @@ if st.session_state.srt_text:
 
 
 # ============================================================
-# STEP 2
+# STEP 2 — SRT -> VOICEOVER
 # ============================================================
 
 st.markdown("---")
 
 st.markdown(
-    """
-<div class="section-card section-purple">
-    <h2>② 🗣️ SRT → မြန်မာ Voiceover</h2>
-    <p>
-        SRT timestamp ကို စစ်ဆေးပြီး Burmese Neural Voice နဲ့
-        သဘာဝကျတဲ့ voiceover တစ်ဖိုင်အဖြစ် ထုတ်ပေးပါတယ်။
-    </p>
-</div>
-""",
-    unsafe_allow_html=True,
+    "## ② SRT → မြန်မာ Voiceover"
 )
 
 st.markdown(
     '<div class="mini">'
-    'SRT တင် → Voice ရွေး → Style ရွေး → Speed ချိန် → Voiceover ထုတ်'
+    'SRT timestamp ကို အလိုအလျောက်စစ်/ပြင်ပြီး '
+    'သဘာဝကျတဲ့ Burmese voiceover တည်ဆောက်ပေးပါတယ်။'
     '</div>',
     unsafe_allow_html=True,
 )
 
-
 srt_file = st.file_uploader(
-    "📄 SRT ဖိုင်တင်ပါ (သို့) အဆင့် ၁ က SRT ကို တိုက်ရိုက်သုံးပါ",
+    "📄 SRT ဖိုင်တင်ပါ "
+    "(သို့) အဆင့် ၁ က SRT ကို တိုက်ရိုက်သုံးပါ",
     type=["srt"],
     key="voice_srt",
 )
@@ -2456,10 +2213,6 @@ with st.form(
     )
 
 
-# ============================================================
-# VOICE GENERATION
-# ============================================================
-
 if make_voice_button:
 
     source_srt = None
@@ -2484,8 +2237,9 @@ if make_voice_button:
     if not source_srt:
 
         st.error(
-            "📄 SRT ဖိုင်တင်ပါ "
-            "(သို့) အဆင့် ၁ မှာ SRT အရင်ထုတ်ပါ။"
+            "SRT ဖိုင်တင်ပါ "
+            "(သို့) အဆင့် ၁ မှာ "
+            "SRT အရင်ထုတ်ပါ။"
         )
 
         st.stop()
@@ -2501,7 +2255,8 @@ if make_voice_button:
         if fixed_count:
 
             st.info(
-                "⏱️ SRT timing ကို အလိုအလျောက်ပြင်ပြီးပါပြီ — "
+                "⏱️ SRT timing ကို "
+                "အလိုအလျောက်ပြင်ပြီးပါပြီ — "
                 f"{fixed_count} ခု"
             )
 
@@ -2517,10 +2272,7 @@ if make_voice_button:
             work = Path(temp_dir)
 
             status = st.empty()
-
-            progress = st.progress(
-                0.0
-            )
+            progress = st.progress(0.0)
 
             voice_path = build_voiceover(
                 segments,
@@ -2532,14 +2284,9 @@ if make_voice_button:
                 work,
                 lambda p, text: (
                     progress.progress(
-                        min(
-                            p,
-                            1.0,
-                        )
+                        min(p, 1.0)
                     ),
-                    status.info(
-                        text
-                    ),
+                    status.info(text),
                 ),
             )
 
@@ -2565,9 +2312,7 @@ if make_voice_button:
                 filename
             )
 
-            progress.progress(
-                1.0
-            )
+            progress.progress(1.0)
 
             status.success(
                 "✅ Voiceover ပြီးပါပြီ — "
@@ -2578,23 +2323,17 @@ if make_voice_button:
     except Exception as exc:
 
         st.error(
-            "❌ Voiceover ထုတ်ရာမှာ အမှားဖြစ်ပါတယ်။"
+            "Voiceover ထုတ်ရာမှာ "
+            "အမှားဖြစ်ပါတယ်။"
         )
 
         st.exception(exc)
 
 
-# ============================================================
-# VOICE PREVIEW
-# ============================================================
-
 if st.session_state.voice_bytes:
 
     st.markdown(
-        '<div class="srt-title">'
-        '🔊 Voiceover Preview'
-        '</div>',
-        unsafe_allow_html=True,
+        "### 🔊 Voiceover Preview"
     )
 
     st.audio(
