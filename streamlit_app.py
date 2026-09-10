@@ -44,15 +44,18 @@ DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
+# Subtitle / dubbing limits
 MAX_SOURCE_CHARS = 42
 MAX_BURMESE_CHARS = 50
 MAX_SEGMENT_DURATION = 6.0
 PAUSE_SPLIT = 0.65
 
+# Voice timing safety
 MAX_TTS_SPEEDUP = 1.15
 MIN_TTS_SPEED = 0.80
 MAX_TTS_SPEED = 1.30
 
+# Small silence between dialogue clips
 VOICE_GAP = 0.04
 
 
@@ -63,31 +66,12 @@ VOICE_GAP = 0.04
 st.markdown(
     """
 <style>
-
-/* =========================================================
-   MAIN APP
-   ========================================================= */
-
 .stApp {
     background:
-        radial-gradient(
-            circle at 5% 0%,
-            rgba(0, 242, 254, 0.18),
-            transparent 30%
-        ),
-        radial-gradient(
-            circle at 95% 5%,
-            rgba(124, 58, 237, 0.22),
-            transparent 32%
-        ),
-        radial-gradient(
-            circle at 50% 100%,
-            rgba(236, 72, 153, 0.12),
-            transparent 35%
-        ),
-        #070a13 !important;
-
-    color: #ffffff !important;
+        radial-gradient(circle at 10% 0%, rgba(91, 76, 255, .14), transparent 32%),
+        radial-gradient(circle at 90% 5%, rgba(0, 200, 255, .10), transparent 28%),
+        #080b12;
+    color: #f4f7fb;
 }
 
 .block-container {
@@ -96,383 +80,67 @@ st.markdown(
     padding-bottom: 3rem;
 }
 
-
-/* =========================================================
-   HERO
-   ========================================================= */
-
 .hero {
-    padding: 30px;
-
-    border-radius: 26px;
-
-    background:
-        linear-gradient(
-            135deg,
-            rgba(25, 35, 70, 0.98),
-            rgba(22, 10, 45, 0.98)
-        );
-
-    border: 1px solid rgba(0, 242, 254, 0.25);
-
-    box-shadow:
-        0 0 35px rgba(0, 242, 254, 0.08),
-        0 20px 60px rgba(0, 0, 0, 0.45);
-
-    margin-bottom: 26px;
+    padding: 28px 30px;
+    border: 1px solid rgba(255,255,255,.09);
+    border-radius: 24px;
+    background: linear-gradient(
+        135deg,
+        rgba(25,31,48,.96),
+        rgba(12,16,26,.96)
+    );
+    box-shadow: 0 18px 50px rgba(0,0,0,.28);
+    margin-bottom: 22px;
 }
 
 .hero h1 {
-    margin: 0 0 8px 0;
-
+    margin: 0 0 7px 0;
     font-size: clamp(30px, 5vw, 48px);
-
-    font-weight: 800;
-
-    background:
-        linear-gradient(
-            90deg,
-            #00f2fe,
-            #7c3aed,
-            #ec4899
-        );
-
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-
-    background-clip: text;
+    letter-spacing: -1.2px;
 }
 
 .hero p {
     margin: 0;
-
-    color: #d5dded !important;
-
+    color: #aeb8ca;
     font-size: 15px;
 }
 
-
-/* =========================================================
-   STATUS PILLS
-   ========================================================= */
-
-.status-pill {
-    display: inline-block;
-
-    padding: 8px 13px;
-
-    border-radius: 999px;
-
-    background:
-        linear-gradient(
-            135deg,
-            rgba(0, 242, 254, 0.15),
-            rgba(124, 58, 237, 0.18)
-        );
-
-    border: 1px solid rgba(0, 242, 254, 0.25);
-
-    color: #ffffff !important;
-
-    font-size: 12px;
-
-    font-weight: 600;
-
-    margin-right: 6px;
-    margin-bottom: 7px;
-
-    box-shadow:
-        0 0 12px rgba(0, 242, 254, 0.05);
-}
-
-
-/* =========================================================
-   HEADINGS
-   ========================================================= */
-
-h2 {
-    color: #ffffff !important;
-    font-weight: 800 !important;
-}
-
-h3 {
-    color: #67e8f9 !important;
-    font-weight: 800 !important;
-}
-
-
-/* =========================================================
-   DESCRIPTION
-   ========================================================= */
-
 .mini {
-    color: #aebbd0 !important;
-
+    color: #9aa6bb;
     font-size: 13px;
-
     margin-top: -8px;
     margin-bottom: 16px;
 }
 
-
-/* =========================================================
-   FILE UPLOADER
-   ========================================================= */
-
 div[data-testid="stFileUploader"] {
-    background:
-        linear-gradient(
-            135deg,
-            rgba(0, 242, 254, 0.07),
-            rgba(124, 58, 237, 0.09)
-        );
-
-    border: 1px solid rgba(0, 242, 254, 0.22);
-
-    border-radius: 18px;
-
-    padding: 8px;
+    border-radius: 16px;
 }
-
-div[data-testid="stFileUploader"] label {
-    color: #ffffff !important;
-}
-
-div[data-testid="stFileUploader"] section {
-    color: #ffffff !important;
-}
-
-
-/* =========================================================
-   LABELS
-   ========================================================= */
-
-label {
-    color: #ffffff !important;
-}
-
-
-/* =========================================================
-   TEXT INPUT
-   ========================================================= */
-
-div[data-baseweb="input"] {
-    background: #ffffff !important;
-
-    border-radius: 13px !important;
-
-    border: 2px solid rgba(0, 242, 254, 0.35) !important;
-}
-
-div[data-baseweb="input"] input {
-    color: #111827 !important;
-
-    -webkit-text-fill-color: #111827 !important;
-
-    background: #ffffff !important;
-
-    font-weight: 600 !important;
-}
-
-
-/* =========================================================
-   TEXT AREA — SRT PREVIEW FIX
-   ========================================================= */
-
-div[data-testid="stTextArea"] textarea {
-    color: #111827 !important;
-
-    -webkit-text-fill-color: #111827 !important;
-
-    background: #ffffff !important;
-
-    caret-color: #111827 !important;
-
-    font-size: 14px !important;
-
-    line-height: 1.65 !important;
-
-    font-weight: 500 !important;
-
-    border: 2px solid #38bdf8 !important;
-
-    border-radius: 16px !important;
-
-    padding: 16px !important;
-
-    opacity: 1 !important;
-
-    box-shadow:
-        0 0 18px rgba(56, 189, 248, 0.10);
-}
-
-div[data-testid="stTextArea"] textarea::placeholder {
-    color: #6b7280 !important;
-
-    -webkit-text-fill-color: #6b7280 !important;
-
-    opacity: 1 !important;
-}
-
-
-/* =========================================================
-   SELECT BOX
-   ========================================================= */
-
-div[data-baseweb="select"] > div {
-    background: #ffffff !important;
-
-    color: #111827 !important;
-
-    border-radius: 13px !important;
-
-    border: 2px solid rgba(124, 58, 237, 0.35) !important;
-}
-
-div[data-baseweb="select"] span {
-    color: #111827 !important;
-}
-
-
-/* =========================================================
-   SLIDER
-   ========================================================= */
-
-div[data-testid="stSlider"] {
-    color: #ffffff !important;
-}
-
-
-/* =========================================================
-   BUTTONS
-   ========================================================= */
 
 div.stButton > button,
 div[data-testid="stFormSubmitButton"] button {
-    min-height: 50px;
-
-    border-radius: 15px !important;
-
-    border: 1px solid rgba(255,255,255,0.20) !important;
-
-    color: #ffffff !important;
-
-    font-weight: 800 !important;
-
-    background:
-        linear-gradient(
-            135deg,
-            #2563eb,
-            #7c3aed,
-            #db2777
-        ) !important;
-
-    box-shadow:
-        0 8px 25px rgba(124, 58, 237, 0.25);
-
-    transition:
-        transform 0.15s ease,
-        box-shadow 0.15s ease;
+    border-radius: 14px;
+    min-height: 48px;
+    font-weight: 700;
 }
 
-div.stButton > button:hover,
-div[data-testid="stFormSubmitButton"] button:hover {
-    transform: translateY(-2px);
-
-    box-shadow:
-        0 12px 30px rgba(124, 58, 237, 0.40);
+.status-pill {
+    display: inline-block;
+    padding: 7px 12px;
+    border-radius: 999px;
+    background: rgba(255,255,255,.06);
+    border: 1px solid rgba(255,255,255,.08);
+    color: #cbd4e5;
+    font-size: 12px;
+    margin-right: 6px;
+    margin-bottom: 6px;
 }
-
-
-/* =========================================================
-   DOWNLOAD BUTTON
-   ========================================================= */
-
-div[data-testid="stDownloadButton"] button {
-    min-height: 50px;
-
-    border-radius: 15px !important;
-
-    color: #ffffff !important;
-
-    font-weight: 800 !important;
-
-    border: 1px solid rgba(0, 242, 254, 0.35) !important;
-
-    background:
-        linear-gradient(
-            135deg,
-            #2563eb,
-            #7c3aed,
-            #db2777
-        ) !important;
-
-    box-shadow:
-        0 8px 25px rgba(37, 99, 235, 0.25);
-}
-
-
-/* =========================================================
-   ALERTS
-   ========================================================= */
-
-div[data-testid="stAlert"] {
-    border-radius: 15px !important;
-
-    border: 1px solid rgba(255,255,255,0.10) !important;
-
-    font-weight: 600 !important;
-}
-
-
-/* =========================================================
-   DIVIDER
-   ========================================================= */
-
-hr {
-    border: none !important;
-
-    height: 1px !important;
-
-    background:
-        linear-gradient(
-            90deg,
-            transparent,
-            #00f2fe,
-            #7c3aed,
-            #ec4899,
-            transparent
-        ) !important;
-
-    margin: 35px 0 !important;
-}
-
-
-/* =========================================================
-   AUDIO
-   ========================================================= */
-
-audio {
-    width: 100% !important;
-
-    border-radius: 14px !important;
-}
-
-
-/* =========================================================
-   FOOTER
-   ========================================================= */
 
 .footer {
     text-align: center;
-
-    color: #7886a0 !important;
-
+    color: #69758a;
     font-size: 12px;
-
     padding-top: 12px;
 }
-
 </style>
 """,
     unsafe_allow_html=True,
@@ -673,63 +341,29 @@ def extract_json_array(text: str):
     )
 
 
+# ============================================================
+# IMPORTANT FIX:
+# DO NOT TRUNCATE BURMESE TRANSLATION
+# ============================================================
+
 def shorten_burmese_text(text: str) -> str:
+    """
+    IMPORTANT:
+    Never cut or truncate Burmese translation.
 
-    text = clean_text(text)
+    The previous version cut long Burmese sentences
+    at MAX_BURMESE_CHARS. That caused:
+        - incomplete sentences
+        - lost meaning
+        - broken dialogue continuity
+        - unnatural dubbing
 
-    if len(text) <= MAX_BURMESE_CHARS:
-        return text
+    Now this function only cleans whitespace.
+    Gemini is responsible for producing concise,
+    natural and complete Burmese dialogue.
+    """
 
-    punctuation_positions = []
-
-    for mark in [
-        "။",
-        "၊",
-        ",",
-        ".",
-        "!",
-        "?",
-        "…",
-    ]:
-        pos = text.rfind(
-            mark,
-            0,
-            MAX_BURMESE_CHARS + 1,
-        )
-
-        if pos >= 20:
-            punctuation_positions.append(pos + 1)
-
-    if punctuation_positions:
-        return clean_text(
-            text[:max(punctuation_positions)]
-        )
-
-    words = text.split()
-
-    result = []
-
-    length = 0
-
-    for word in words:
-        extra = len(word) + (
-            1 if result else 0
-        )
-
-        if length + extra > MAX_BURMESE_CHARS:
-            break
-
-        result.append(word)
-        length += extra
-
-    shortened = clean_text(
-        " ".join(result)
-    )
-
-    if shortened:
-        return shortened
-
-    return text[:MAX_BURMESE_CHARS].strip()
+    return clean_text(text)
 
 
 def translate_batch(client, rows):
@@ -754,22 +388,27 @@ that sounds like a real Myanmar movie dub.
 
 IMPORTANT:
 The Burmese sentence will be spoken by TTS.
-Therefore it MUST be concise and easy to speak naturally.
 
 Rules:
-- Preserve the original meaning.
+- Preserve the COMPLETE original meaning.
 - Preserve names and important proper nouns.
 - Preserve emotion, intention and tone.
 - Do NOT summarize away important meaning.
+- Do NOT remove important information just to make the sentence shorter.
+- Do NOT truncate the sentence.
+- Do NOT omit the subject, action, object, emotion or important information.
 - Do NOT add explanations.
 - Do NOT add quotation marks unless required by meaning.
 - Do NOT translate word-for-word if that sounds unnatural.
 - Use natural conversational Burmese.
 - Avoid unnecessary filler words.
 - Avoid repeating information.
-- Prefer shorter natural Burmese wording.
-- Aim for approximately 25–50 Burmese characters.
-- Never intentionally create a very long sentence.
+- Prefer concise natural Burmese wording when possible.
+- Keep the dialogue logically connected to the surrounding dialogue.
+- Write like a professional Myanmar movie dubbing translator.
+- The result must be complete and understandable on its own.
+- If the original meaning requires a longer Burmese sentence, KEEP the COMPLETE meaning.
+- Do not force the translation into an artificial character limit.
 - The subtitle must be suitable for dubbing within its timestamp.
 - Return ONLY JSON.
 - Return exactly {len(payload)} objects.
@@ -821,6 +460,8 @@ INPUT:
                         "ဘာသာပြန်စာ မထွက်ပါ။"
                     )
 
+                # IMPORTANT:
+                # Do NOT truncate the translation.
                 text = shorten_burmese_text(text)
 
                 translated[idx] = text
@@ -1105,6 +746,7 @@ def deepgram_transcribe(
                     if segments:
                         return segments
 
+                # Fallback
                 utterances = results.get(
                     "utterances",
                     [],
@@ -1260,6 +902,7 @@ def build_srt_segments(
 
     result = []
 
+    # Smaller batches = more reliable JSON
     batch_size = 10
     total = len(rows)
 
@@ -1582,6 +1225,8 @@ def atempo_chain(
     factor: float,
 ) -> str:
 
+    # IMPORTANT:
+    # Never allow extreme speed.
     factor = max(
         MIN_TTS_SPEED,
         min(
@@ -1616,6 +1261,18 @@ def fit_tts_to_slot(
             MAX_TTS_SPEED,
         ),
     )
+
+    # --------------------------------------------------------
+    # IMPORTANT FIX
+    #
+    # Old version:
+    # raw_duration / slot
+    #
+    # That could become 2x, 3x or 4x.
+    #
+    # New version:
+    # Never force TTS above 1.15x.
+    # --------------------------------------------------------
 
     required_factor = (
         raw_duration / slot
@@ -1707,6 +1364,18 @@ def build_voiceover(
             float(item["end"]),
         )
 
+        # ----------------------------------------------------
+        # IMPORTANT:
+        # Use the time until the NEXT subtitle starts.
+        #
+        # Example:
+        # Subtitle 1: 0 - 2 sec
+        # Subtitle 2: 3.5 sec
+        #
+        # Voice 1 can naturally use almost 3.5 sec,
+        # instead of being forced into only 2 sec.
+        # ----------------------------------------------------
+
         if index < total:
 
             next_start = max(
@@ -1734,6 +1403,8 @@ def build_voiceover(
                 - start
             )
 
+        # Don't create an unlimited slot.
+        # It should still belong to this dialogue.
         slot = max(
             0.20,
             float(slot),
