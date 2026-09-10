@@ -44,18 +44,15 @@ DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
-# Subtitle / dubbing limits
 MAX_SOURCE_CHARS = 42
 MAX_BURMESE_CHARS = 50
 MAX_SEGMENT_DURATION = 6.0
 PAUSE_SPLIT = 0.65
 
-# Voice timing safety
 MAX_TTS_SPEEDUP = 1.15
 MIN_TTS_SPEED = 0.80
 MAX_TTS_SPEED = 1.30
 
-# Small silence between dialogue clips
 VOICE_GAP = 0.04
 
 
@@ -66,101 +63,363 @@ VOICE_GAP = 0.04
 st.markdown(
     """
 <style>
+
+/* =========================
+   MAIN BACKGROUND
+   ========================= */
+
 .stApp {
     background:
-        radial-gradient(circle at 10% 0%, rgba(91, 76, 255, .14), transparent 32%),
-        radial-gradient(circle at 90% 5%, rgba(0, 200, 255, .10), transparent 28%),
-        #080b12;
-    color: #f4f7fb;
+        radial-gradient(
+            circle at 10% 5%,
+            rgba(255, 0, 128, 0.22),
+            transparent 28%
+        ),
+        radial-gradient(
+            circle at 90% 5%,
+            rgba(0, 220, 255, 0.22),
+            transparent 28%
+        ),
+        radial-gradient(
+            circle at 50% 95%,
+            rgba(130, 60, 255, 0.20),
+            transparent 32%
+        ),
+        linear-gradient(
+            135deg,
+            #f7fbff 0%,
+            #fff5fb 45%,
+            #f4f9ff 100%
+        );
+
+    color: #000000;
 }
+
+/* =========================
+   CONTENT WIDTH
+   ========================= */
 
 .block-container {
     max-width: 1120px;
-    padding-top: 2rem;
+    padding-top: 1.5rem;
     padding-bottom: 3rem;
 }
 
-.hero {
-    padding: 28px 30px;
-    border: 1px solid rgba(255,255,255,.09);
-    border-radius: 24px;
-    background: linear-gradient(
-        135deg,
-        rgba(25,31,48,.96),
-        rgba(12,16,26,.96)
-    );
-    box-shadow: 0 18px 50px rgba(0,0,0,.28);
-    margin-bottom: 22px;
+/* =========================
+   ALL NORMAL TEXT BLACK
+   ========================= */
+
+.stApp,
+.stApp p,
+.stApp label,
+.stApp span,
+.stApp div,
+.stApp h1,
+.stApp h2,
+.stApp h3,
+.stApp h4,
+.stApp h5,
+.stApp h6 {
+    color: #000000;
 }
 
-.hero h1 {
-    margin: 0 0 7px 0;
-    font-size: clamp(30px, 5vw, 48px);
-    letter-spacing: -1.2px;
+/* =========================
+   HERO
+   ========================= */
+
+.hero-box {
+    padding: 28px 24px;
+    margin-bottom: 26px;
+    border-radius: 26px;
+
+    background:
+        linear-gradient(
+            135deg,
+            #00e5ff 0%,
+            #6c3cff 45%,
+            #ff299c 100%
+        );
+
+    border: 3px solid #000000;
+
+    box-shadow:
+        0 10px 0 #000000,
+        0 18px 35px rgba(110, 40, 180, 0.30);
+
+    text-align: center;
 }
 
-.hero p {
+.hero-title {
     margin: 0;
-    color: #aeb8ca;
-    font-size: 15px;
+    color: #000000 !important;
+    font-size: clamp(30px, 7vw, 52px);
+    font-weight: 900;
+    letter-spacing: -1px;
 }
 
-.mini {
-    color: #9aa6bb;
-    font-size: 13px;
-    margin-top: -8px;
-    margin-bottom: 16px;
-}
-
-div[data-testid="stFileUploader"] {
-    border-radius: 16px;
-}
-
-div.stButton > button,
-div[data-testid="stFormSubmitButton"] button {
-    border-radius: 14px;
-    min-height: 48px;
+.hero-subtitle {
+    margin-top: 8px;
+    color: #000000 !important;
+    font-size: 16px;
     font-weight: 700;
 }
 
-.status-pill {
-    display: inline-block;
-    padding: 7px 12px;
-    border-radius: 999px;
-    background: rgba(255,255,255,.06);
-    border: 1px solid rgba(255,255,255,.08);
-    color: #cbd4e5;
-    font-size: 12px;
-    margin-right: 6px;
-    margin-bottom: 6px;
+/* =========================
+   SECTION TITLE
+   ========================= */
+
+.section-title {
+    margin-top: 28px;
+    margin-bottom: 14px;
+
+    padding: 14px 18px;
+
+    border-radius: 18px;
+
+    background:
+        linear-gradient(
+            90deg,
+            #00e5ff,
+            #7b3cff,
+            #ff299c
+        );
+
+    border: 3px solid #000000;
+
+    box-shadow: 0 6px 0 #000000;
+
+    color: #000000 !important;
+
+    font-size: 25px;
+    font-weight: 900;
 }
+
+/* =========================
+   INPUTS
+   ========================= */
+
+div[data-baseweb="input"] > div,
+div[data-baseweb="textarea"] > div,
+div[data-baseweb="select"] > div {
+    background: #ffffff !important;
+    border: 2px solid #000000 !important;
+    border-radius: 13px !important;
+}
+
+input,
+textarea {
+    color: #000000 !important;
+    background: #ffffff !important;
+    -webkit-text-fill-color: #000000 !important;
+}
+
+textarea {
+    border-radius: 14px !important;
+}
+
+/* =========================
+   FILE UPLOADER
+   ========================= */
+
+div[data-testid="stFileUploader"] {
+    background:
+        linear-gradient(
+            135deg,
+            rgba(0, 229, 255, 0.22),
+            rgba(255, 41, 156, 0.18)
+        );
+
+    border: 3px solid #000000;
+    border-radius: 18px;
+    padding: 10px;
+}
+
+div[data-testid="stFileUploader"] section {
+    background: #ffffff !important;
+    border-radius: 13px !important;
+}
+
+div[data-testid="stFileUploader"] button {
+    color: #000000 !important;
+    background: #ffffff !important;
+    border: 2px solid #000000 !important;
+}
+
+/* =========================
+   SELECTBOX
+   ========================= */
+
+div[data-baseweb="select"] * {
+    color: #000000 !important;
+}
+
+/* =========================
+   BUTTONS
+   ========================= */
+
+div.stButton > button,
+div[data-testid="stFormSubmitButton"] button,
+button[kind="primary"] {
+
+    min-height: 52px;
+
+    color: #000000 !important;
+
+    background:
+        linear-gradient(
+            90deg,
+            #00e5ff 0%,
+            #6c3cff 50%,
+            #ff299c 100%
+        ) !important;
+
+    border: 3px solid #000000 !important;
+
+    border-radius: 15px !important;
+
+    font-size: 16px !important;
+    font-weight: 900 !important;
+
+    box-shadow: 0 5px 0 #000000 !important;
+
+    transition: all 0.12s ease;
+}
+
+div.stButton > button:hover,
+div[data-testid="stFormSubmitButton"] button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 7px 0 #000000 !important;
+}
+
+div.stButton > button:active,
+div[data-testid="stFormSubmitButton"] button:active {
+    transform: translateY(3px);
+    box-shadow: 0 2px 0 #000000 !important;
+}
+
+/* =========================
+   DOWNLOAD BUTTON
+   ========================= */
+
+div[data-testid="stDownloadButton"] button {
+
+    min-height: 52px;
+
+    color: #000000 !important;
+
+    background:
+        linear-gradient(
+            90deg,
+            #00e5ff,
+            #7b3cff,
+            #ff299c
+        ) !important;
+
+    border: 3px solid #000000 !important;
+
+    border-radius: 15px !important;
+
+    font-size: 16px !important;
+    font-weight: 900 !important;
+
+    box-shadow: 0 5px 0 #000000 !important;
+}
+
+/* =========================
+   PROGRESS
+   ========================= */
+
+div[data-testid="stProgress"] > div {
+    background: #ffffff !important;
+    border: 2px solid #000000;
+    border-radius: 20px;
+}
+
+div[data-testid="stProgress"] div[role="progressbar"] {
+    background:
+        linear-gradient(
+            90deg,
+            #00e5ff,
+            #7b3cff,
+            #ff299c
+        ) !important;
+}
+
+/* =========================
+   ALERT BOXES
+   ========================= */
+
+div[data-testid="stAlert"] {
+    border: 2px solid #000000 !important;
+    border-radius: 14px !important;
+}
+
+div[data-testid="stAlert"] * {
+    color: #000000 !important;
+}
+
+/* =========================
+   SRT PREVIEW
+   ========================= */
+
+.srt-title {
+    margin-top: 22px;
+    margin-bottom: 12px;
+
+    color: #000000 !important;
+
+    font-size: 25px;
+    font-weight: 900;
+}
+
+/* =========================
+   DIVIDER
+   ========================= */
+
+hr {
+    border: 0 !important;
+    height: 5px !important;
+
+    background:
+        linear-gradient(
+            90deg,
+            #00e5ff,
+            #7b3cff,
+            #ff299c
+        ) !important;
+
+    border-radius: 10px;
+    margin: 34px 0 !important;
+}
+
+/* =========================
+   FOOTER
+   ========================= */
 
 .footer {
     text-align: center;
-    color: #69758a;
-    font-size: 12px;
-    padding-top: 12px;
+    color: #000000 !important;
+    font-size: 13px;
+    font-weight: 700;
+    padding-top: 14px;
 }
+
 </style>
 """,
     unsafe_allow_html=True,
 )
 
 
+# ============================================================
+# HERO
+# ============================================================
+
 st.markdown(
     """
-<div class="hero">
-    <h1>🎬 Myanmar Movie AI</h1>
-    <p>
-        Movie dialogue ကို မြန်မာ SRT အဖြစ်ပြောင်းပြီး
-        သဘာဝကျ Burmese Voiceover ထုတ်ပေးတဲ့ Studio
-    </p>
-
-    <div style="margin-top:16px">
-        <span class="status-pill">🎙️ Deepgram STT</span>
-        <span class="status-pill">🤖 Gemini Translation</span>
-        <span class="status-pill">🗣️ Burmese Neural Voice</span>
-        <span class="status-pill">⚡ Auto Timestamp</span>
+<div class="hero-box">
+    <div class="hero-title">🎬 Myanmar Movie AI</div>
+    <div class="hero-subtitle">
+        Video → မြန်မာ SRT → Burmese Voiceover
     </div>
 </div>
 """,
@@ -341,29 +600,65 @@ def extract_json_array(text: str):
     )
 
 
-# ============================================================
-# IMPORTANT FIX:
-# DO NOT TRUNCATE BURMESE TRANSLATION
-# ============================================================
-
 def shorten_burmese_text(text: str) -> str:
-    """
-    IMPORTANT:
-    Never cut or truncate Burmese translation.
 
-    The previous version cut long Burmese sentences
-    at MAX_BURMESE_CHARS. That caused:
-        - incomplete sentences
-        - lost meaning
-        - broken dialogue continuity
-        - unnatural dubbing
+    text = clean_text(text)
 
-    Now this function only cleans whitespace.
-    Gemini is responsible for producing concise,
-    natural and complete Burmese dialogue.
-    """
+    if len(text) <= MAX_BURMESE_CHARS:
+        return text
 
-    return clean_text(text)
+    punctuation_positions = []
+
+    for mark in [
+        "။",
+        "၊",
+        ",",
+        ".",
+        "!",
+        "?",
+        "…",
+    ]:
+        pos = text.rfind(
+            mark,
+            0,
+            MAX_BURMESE_CHARS + 1,
+        )
+
+        if pos >= 20:
+            punctuation_positions.append(
+                pos + 1
+            )
+
+    if punctuation_positions:
+        return clean_text(
+            text[:max(punctuation_positions)]
+        )
+
+    words = text.split()
+
+    result = []
+    length = 0
+
+    for word in words:
+
+        extra = len(word) + (
+            1 if result else 0
+        )
+
+        if length + extra > MAX_BURMESE_CHARS:
+            break
+
+        result.append(word)
+        length += extra
+
+    shortened = clean_text(
+        " ".join(result)
+    )
+
+    if shortened:
+        return shortened
+
+    return text[:MAX_BURMESE_CHARS].strip()
 
 
 def translate_batch(client, rows):
@@ -388,27 +683,22 @@ that sounds like a real Myanmar movie dub.
 
 IMPORTANT:
 The Burmese sentence will be spoken by TTS.
+Therefore it MUST be concise and easy to speak naturally.
 
 Rules:
-- Preserve the COMPLETE original meaning.
+- Preserve the original meaning.
 - Preserve names and important proper nouns.
 - Preserve emotion, intention and tone.
 - Do NOT summarize away important meaning.
-- Do NOT remove important information just to make the sentence shorter.
-- Do NOT truncate the sentence.
-- Do NOT omit the subject, action, object, emotion or important information.
 - Do NOT add explanations.
 - Do NOT add quotation marks unless required by meaning.
 - Do NOT translate word-for-word if that sounds unnatural.
 - Use natural conversational Burmese.
 - Avoid unnecessary filler words.
 - Avoid repeating information.
-- Prefer concise natural Burmese wording when possible.
-- Keep the dialogue logically connected to the surrounding dialogue.
-- Write like a professional Myanmar movie dubbing translator.
-- The result must be complete and understandable on its own.
-- If the original meaning requires a longer Burmese sentence, KEEP the COMPLETE meaning.
-- Do not force the translation into an artificial character limit.
+- Prefer shorter natural Burmese wording.
+- Aim for approximately 25–50 Burmese characters.
+- Never intentionally create a very long sentence.
 - The subtitle must be suitable for dubbing within its timestamp.
 - Return ONLY JSON.
 - Return exactly {len(payload)} objects.
@@ -427,7 +717,9 @@ INPUT:
     last_error = ""
 
     for attempt in range(3):
+
         try:
+
             response = client.models.generate_content(
                 model=model,
                 contents=prompt,
@@ -448,6 +740,7 @@ INPUT:
             translated = {}
 
             for item in data:
+
                 idx = int(item["id"])
 
                 text = clean_text(
@@ -460,9 +753,9 @@ INPUT:
                         "ဘာသာပြန်စာ မထွက်ပါ။"
                     )
 
-                # IMPORTANT:
-                # Do NOT truncate the translation.
-                text = shorten_burmese_text(text)
+                text = shorten_burmese_text(
+                    text
+                )
 
                 translated[idx] = text
 
@@ -474,6 +767,7 @@ INPUT:
             return translated
 
         except Exception as exc:
+
             last_error = str(exc)
 
             low = last_error.lower()
@@ -516,6 +810,7 @@ INPUT:
 # ============================================================
 
 def get_deepgram_key():
+
     key = get_secret(
         "DEEPGRAM_API_KEY"
     )
@@ -555,6 +850,7 @@ def words_to_segments(words):
         ).strip()
 
     def flush():
+
         nonlocal current
 
         if not current:
@@ -582,6 +878,7 @@ def words_to_segments(words):
         )
 
         if text and end > start:
+
             segments.append(
                 {
                     "start": start,
@@ -696,6 +993,7 @@ def deepgram_transcribe(
     for attempt in range(3):
 
         try:
+
             response = requests.post(
                 url,
                 params=params,
@@ -730,6 +1028,7 @@ def deepgram_transcribe(
                     ) or []
 
                     if alternatives:
+
                         words = alternatives[
                             0
                         ].get(
@@ -746,7 +1045,6 @@ def deepgram_transcribe(
                     if segments:
                         return segments
 
-                # Fallback
                 utterances = results.get(
                     "utterances",
                     [],
@@ -781,6 +1079,7 @@ def deepgram_transcribe(
                         text
                         and end > start
                     ):
+
                         fallback.append(
                             {
                                 "start": start,
@@ -809,9 +1108,11 @@ def deepgram_transcribe(
                 break
 
         except Exception as exc:
+
             last_error = str(exc)
 
         if attempt < 2:
+
             time.sleep(
                 (2 ** attempt)
                 + random.random()
@@ -887,6 +1188,7 @@ def build_srt_segments(
             text
             and end > start + 0.05
         ):
+
             rows.append(
                 {
                     "start": start,
@@ -902,7 +1204,6 @@ def build_srt_segments(
 
     result = []
 
-    # Smaller batches = more reliable JSON
     batch_size = 10
     total = len(rows)
 
@@ -949,7 +1250,7 @@ def build_srt_segments(
                 ),
             ),
             (
-                "Gemini ဘာသာပြန်ပြီးပါပြီ — "
+                "ဘာသာပြန်ပြီးပါပြီ — "
                 f"{min(pos + len(batch), total)}"
                 f"/{total}"
             ),
@@ -1079,6 +1380,7 @@ def parse_srt(text: str):
             subtitle
             and end > start
         ):
+
             entries.append(
                 {
                     "start": start,
@@ -1108,6 +1410,7 @@ def parse_srt(text: str):
             cleaned
             and start < cleaned[-1]["end"]
         ):
+
             start = cleaned[-1]["end"]
             fixed += 1
 
@@ -1122,9 +1425,11 @@ def parse_srt(text: str):
             )
 
         else:
+
             fixed += 1
 
     if not cleaned:
+
         raise RuntimeError(
             "SRT timing ပြင်ပြီးနောက် "
             "valid subtitle မကျန်ပါ။"
@@ -1192,6 +1497,7 @@ def make_tts(
                 and output_path.stat().st_size
                 > 1000
             ):
+
                 return
 
             raise RuntimeError(
@@ -1205,6 +1511,7 @@ def make_tts(
             )
 
             if attempt < 2:
+
                 time.sleep(
                     1.5 + attempt
                 )
@@ -1225,8 +1532,6 @@ def atempo_chain(
     factor: float,
 ) -> str:
 
-    # IMPORTANT:
-    # Never allow extreme speed.
     factor = max(
         MIN_TTS_SPEED,
         min(
@@ -1262,26 +1567,16 @@ def fit_tts_to_slot(
         ),
     )
 
-    # --------------------------------------------------------
-    # IMPORTANT FIX
-    #
-    # Old version:
-    # raw_duration / slot
-    #
-    # That could become 2x, 3x or 4x.
-    #
-    # New version:
-    # Never force TTS above 1.15x.
-    # --------------------------------------------------------
-
     required_factor = (
         raw_duration / slot
     )
 
     if required_factor <= 1.0:
+
         factor = user_speed
 
     else:
+
         factor = max(
             required_factor,
             user_speed,
@@ -1324,6 +1619,7 @@ def fit_tts_to_slot(
         or not output.exists()
         or output.stat().st_size < 1000
     ):
+
         raise RuntimeError(
             "Voiceover timing ပြင်မရပါ။\n"
             + (
@@ -1364,18 +1660,6 @@ def build_voiceover(
             float(item["end"]),
         )
 
-        # ----------------------------------------------------
-        # IMPORTANT:
-        # Use the time until the NEXT subtitle starts.
-        #
-        # Example:
-        # Subtitle 1: 0 - 2 sec
-        # Subtitle 2: 3.5 sec
-        #
-        # Voice 1 can naturally use almost 3.5 sec,
-        # instead of being forced into only 2 sec.
-        # ----------------------------------------------------
-
         if index < total:
 
             next_start = max(
@@ -1403,8 +1687,6 @@ def build_voiceover(
                 - start
             )
 
-        # Don't create an unlimited slot.
-        # It should still belong to this dialogue.
         slot = max(
             0.20,
             float(slot),
@@ -1459,6 +1741,7 @@ def build_voiceover(
         )
 
     if not clips:
+
         raise RuntimeError(
             "Voiceover အတွက် subtitle မရှိပါ။"
         )
@@ -1477,6 +1760,7 @@ def build_voiceover(
     ]
 
     for _, clip in clips:
+
         command.extend(
             [
                 "-i",
@@ -1558,6 +1842,7 @@ def build_voiceover(
         or not output.exists()
         or output.stat().st_size < 5000
     ):
+
         raise RuntimeError(
             "Voiceover file မထုတ်နိုင်ပါ။\n"
             + (
@@ -1582,6 +1867,7 @@ def build_voiceover(
     )
 
     if validation.returncode != 0:
+
         raise RuntimeError(
             "Voiceover audio validation "
             "မအောင်မြင်ပါ။\n"
@@ -1619,18 +1905,12 @@ if "voice_name" not in st.session_state:
 
 
 # ============================================================
-# STEP 1 — VIDEO -> SRT
+# STEP 1
 # ============================================================
 
 st.markdown(
-    "## ① Video → မြန်မာ SRT"
-)
-
-st.markdown(
-    '<div class="mini">'
-    'Audio ကို အလိုအလျောက်ထုတ် → '
-    'dialogue timestamp ခွဲ → '
-    'Gemini နဲ့ သဘာဝကျ မြန်မာလိုဘာသာပြန် → SRT'
+    '<div class="section-title">'
+    '① Video → မြန်မာ SRT'
     '</div>',
     unsafe_allow_html=True,
 )
@@ -1673,9 +1953,11 @@ with st.form(
 if make_srt_button:
 
     if not video_file:
+
         st.error(
             "Video တစ်ခုအရင်တင်ပါ။"
         )
+
         st.stop()
 
     try:
@@ -1702,7 +1984,7 @@ if make_srt_button:
             progress = st.progress(0.0)
 
             status.info(
-                "🎧 Video audio ထုတ်နေသည်..."
+                "🎧 Audio ထုတ်နေသည်..."
             )
 
             extract_audio(
@@ -1713,8 +1995,7 @@ if make_srt_button:
             progress.progress(0.12)
 
             status.info(
-                "🎙️ Deepgram က dialogue + "
-                "word timestamp ရယူနေသည်..."
+                "🎙️ Dialogue timestamp ရယူနေသည်..."
             )
 
             source_segments = (
@@ -1726,9 +2007,7 @@ if make_srt_button:
             progress.progress(0.25)
 
             status.info(
-                "🤖 Gemini က မြန်မာလို "
-                "တိုတောင်းပြီး သဘာဝကျအောင် "
-                "ဘာသာပြန်နေသည်..."
+                "🤖 မြန်မာလို ဘာသာပြန်နေသည်..."
             )
 
             translated_segments = (
@@ -1784,13 +2063,16 @@ if make_srt_button:
 if st.session_state.srt_text:
 
     st.markdown(
-        "### 📄 Myanmar SRT Preview"
+        '<div class="srt-title">'
+        '📄 Myanmar SRT Preview'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
     st.text_area(
-        "",
+        "SRT",
         st.session_state.srt_text,
-        height=280,
+        height=300,
         label_visibility="collapsed",
         key="srt_preview",
     )
@@ -1810,30 +2092,23 @@ if st.session_state.srt_text:
 
 
 # ============================================================
-# STEP 2 — SRT -> VOICEOVER
+# STEP 2
 # ============================================================
 
 st.markdown("---")
 
 st.markdown(
-    "## ② SRT → မြန်မာ Voiceover"
-)
-
-st.markdown(
-    '<div class="mini">'
-    'SRT timestamp ကို အလိုအလျောက်စစ်/ပြင်ပြီး '
-    'သဘာဝကျတဲ့ Burmese voiceover တည်ဆောက်ပေးပါတယ်။'
+    '<div class="section-title">'
+    '② SRT → မြန်မာ Voiceover'
     '</div>',
     unsafe_allow_html=True,
 )
 
 srt_file = st.file_uploader(
-    "📄 SRT ဖိုင်တင်ပါ "
-    "(သို့) အဆင့် ၁ က SRT ကို တိုက်ရိုက်သုံးပါ",
+    "📄 SRT ဖိုင်တင်ပါ",
     type=["srt"],
     key="voice_srt",
 )
-
 
 with st.form(
     "voice_form",
@@ -1909,8 +2184,7 @@ if make_voice_button:
 
         st.error(
             "SRT ဖိုင်တင်ပါ "
-            "(သို့) အဆင့် ၁ မှာ "
-            "SRT အရင်ထုတ်ပါ။"
+            "(သို့) အဆင့် ၁ မှာ SRT အရင်ထုတ်ပါ။"
         )
 
         st.stop()
@@ -1986,9 +2260,7 @@ if make_voice_button:
             progress.progress(1.0)
 
             status.success(
-                "✅ Voiceover ပြီးပါပြီ — "
-                "သဘာဝကျတဲ့ speed ကို ဦးစားပေးပြီး "
-                "SRT timing အတိုင်း audio ပြုလုပ်ပြီးပါပြီ။"
+                "✅ Voiceover ပြီးပါပြီ"
             )
 
     except Exception as exc:
@@ -2001,10 +2273,17 @@ if make_voice_button:
         st.exception(exc)
 
 
+# ============================================================
+# VOICE PREVIEW
+# ============================================================
+
 if st.session_state.voice_bytes:
 
     st.markdown(
-        "### 🔊 Voiceover Preview"
+        '<div class="srt-title">'
+        '🔊 Voiceover Preview'
+        '</div>',
+        unsafe_allow_html=True,
     )
 
     st.audio(
@@ -2031,8 +2310,7 @@ st.markdown("---")
 
 st.markdown(
     '<div class="footer">'
-    '🎬 Myanmar Movie AI · '
-    'Video → Myanmar SRT → Burmese Voiceover'
+    '🎬 Myanmar Movie AI'
     '</div>',
     unsafe_allow_html=True,
 )
