@@ -1,5 +1,6 @@
-streamlit
+Streamlit
 requests
 edge-tts
 imageio-ffmpeg
-google-genai
+google-generativeai
+pysrt
