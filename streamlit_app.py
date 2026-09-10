@@ -320,6 +320,7 @@ div[data-testid="stDownloadButton"] button {
     border-radius: 15px !important;
 
     font-size: 16px !important;
+
     font-weight: 900 !important;
 
     box-shadow: 0 5px 0 #000000 !important;
@@ -549,19 +550,39 @@ def extract_audio(
 
 
 # ============================================================
-# GEMINI
+# GEMINI (WITH KEY ROTATION)
 # ============================================================
 
-def get_gemini_client():
-    key = get_secret("GEMINI_API_KEY")
+def get_gemini_keys() -> list[str]:
+    keys = []
+    
+    # 1. Check GEMINI_API_KEY (support comma-separated keys)
+    main_key = get_secret("GEMINI_API_KEY")
+    if main_key:
+        for k in main_key.split(","):
+            k = k.strip()
+            if k and k not in keys:
+                keys.append(k)
 
-    if not key:
+    # 2. Check numbered keys like GEMINI_API_KEY_1, GEMINI_API_KEY_2, ...
+    for i in range(1, 10):
+        key = get_secret(f"GEMINI_API_KEY_{i}")
+        if key and key not in keys:
+            keys.append(key)
+
+    if not keys:
         raise RuntimeError(
             "GEMINI_API_KEY မတွေ့ပါ။ "
             "Streamlit Secrets ထဲမှာ ထည့်ပါ။"
         )
 
-    return genai.Client(api_key=key)
+    return keys
+
+
+def get_gemini_client(key_index: int = 0):
+    keys = get_gemini_keys()
+    selected_key = keys[key_index % len(keys)]
+    return genai.Client(api_key=selected_key)
 
 
 def get_gemini_model() -> str:
@@ -661,7 +682,7 @@ def shorten_burmese_text(text: str) -> str:
     return text[:MAX_BURMESE_CHARS].strip()
 
 
-def translate_batch(client, rows):
+def translate_batch(client_ignored, rows):
 
     payload = [
         {
@@ -714,12 +735,21 @@ INPUT:
 """
 
     model = get_gemini_model()
+    keys = get_gemini_keys()
+    
+    if "current_key_index" not in st.session_state:
+        st.session_state.current_key_index = 0
+
+    total_keys = len(keys)
+    attempts = 0
+    max_attempts = total_keys * 3
     last_error = ""
 
-    for attempt in range(3):
+    while attempts < max_attempts:
+        current_idx = st.session_state.current_key_index % total_keys
+        client = get_gemini_client(current_idx)
 
         try:
-
             response = client.models.generate_content(
                 model=model,
                 contents=prompt,
@@ -767,9 +797,7 @@ INPUT:
             return translated
 
         except Exception as exc:
-
             last_error = str(exc)
-
             low = last_error.lower()
 
             transient = any(
@@ -785,17 +813,18 @@ INPUT:
                     "overloaded",
                     "resource exhausted",
                     "high demand",
+                    "quota",
                 ]
             )
 
-            if (
-                transient
-                and attempt < 2
-            ):
-                time.sleep(
-                    (2 ** attempt)
-                    + random.random()
-                )
+            if transient and total_keys > 1:
+                # Key limit သို့မဟုတ် transient error တက်ပါက နောက် Key တစ်ခုသို့ ပြောင်းသုံးမည်
+                st.session_state.current_key_index = (st.session_state.current_key_index + 1) % total_keys
+                attempts += 1
+                time.sleep(1 + random.random())
+            elif transient and attempts < 2:
+                attempts += 1
+                time.sleep((2 ** attempts) + random.random())
             else:
                 break
 
@@ -1903,6 +1932,9 @@ if "voice_name" not in st.session_state:
         "myanmar_voiceover.m4a"
     )
 
+if "current_key_index" not in st.session_state:
+    st.session_state.current_key_index = 0
+
 
 # ============================================================
 # STEP 1
@@ -2012,7 +2044,7 @@ if make_srt_button:
 
             translated_segments = (
                 build_srt_segments(
-                    get_gemini_client(),
+                    get_gemini_client(st.session_state.current_key_index),
                     source_segments,
                     lambda p, text: (
                         progress.progress(
