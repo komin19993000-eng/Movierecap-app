@@ -838,7 +838,42 @@ INPUT:
                 ]
             )
 
+            # ==================================================
+            # ONLY CHANGE:
+            # 503 / high demand ဖြစ်ရင် retry ဆက်လုပ်မယ်။
+            # ==================================================
+
             if (
+                "503" in low
+                or "high demand" in low
+                or "temporarily unavailable" in low
+            ):
+
+                attempts += 1
+
+                retry_delays = [
+                    8,
+                    16,
+                    32,
+                    60,
+                    60,
+                ]
+
+                if attempts <= len(
+                    retry_delays
+                ):
+
+                    time.sleep(
+                        retry_delays[
+                            attempts - 1
+                        ]
+                    )
+
+                    continue
+
+                break
+
+            elif (
                 transient
                 and total_keys > 1
             ):
