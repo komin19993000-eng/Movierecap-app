@@ -1720,13 +1720,34 @@ def atempo_chain(
 
     factor = max(
         MIN_TTS_SPEED,
-        min(
-            float(factor),
-            MAX_TTS_SPEEDUP,
-        ),
+        float(factor),
     )
 
-    return f"atempo={factor:.6f}"
+    filters = []
+
+    while factor > 2.0:
+
+        filters.append(
+            "atempo=2.0"
+        )
+
+        factor /= 2.0
+
+    while factor < 0.5:
+
+        filters.append(
+            "atempo=0.5"
+        )
+
+        factor /= 0.5
+
+    filters.append(
+        f"atempo={factor:.6f}"
+    )
+
+    return ",".join(
+        filters
+    )
 
 
 def fit_tts_to_slot(
@@ -1763,30 +1784,30 @@ def fit_tts_to_slot(
 
     else:
 
+        # ====================================================
+        # IMPORTANT FIX
+        # ====================================================
+        #
+        # Previous version capped the speed at 1.15 and then
+        # used atrim=duration=slot.
+        #
+        # That caused the final words of a Burmese sentence
+        # to be CUT OFF when TTS was longer than the slot.
+        #
+        # Now we calculate the actual factor required to make
+        # the COMPLETE TTS fit inside the available slot.
+        #
+        # No atrim is used.
+        # Therefore the spoken sentence is not chopped.
+        # ====================================================
+
         factor = max(
             required_factor,
             user_speed,
         )
 
-        factor = min(
-            factor,
-            MAX_TTS_SPEEDUP,
-        )
-
-    # IMPORTANT:
-    # Do NOT use apad here.
-    # apad can extend each clip beyond its subtitle timing
-    # and make the final voiceover much longer than the video.
-    #
-    # Instead:
-    # 1. Change speed when necessary.
-    # 2. Keep the audio inside the exact subtitle slot.
-    # 3. Trim the result to the slot duration.
-
     audio_filter = (
         atempo_chain(factor)
-        + ",atrim=duration="
-        + f"{slot:.3f}"
         + ",asetpts=PTS-STARTPTS"
     )
 
@@ -2308,12 +2329,19 @@ if st.session_state.srt_text:
         unsafe_allow_html=True,
     )
 
+    # ========================================================
+    # PREVIEW FIX
+    # ========================================================
+    # Do not use a persistent widget key here.
+    # The old key could keep stale preview content even when
+    # session_state.srt_text had the complete new SRT.
+    # ========================================================
+
     st.text_area(
         "SRT",
-        st.session_state.srt_text,
+        value=st.session_state.srt_text,
         height=300,
         label_visibility="collapsed",
-        key="srt_preview",
     )
 
     st.download_button(
