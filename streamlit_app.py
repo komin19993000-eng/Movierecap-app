@@ -803,9 +803,9 @@ INPUT:
                         "ဘာသာပြန်စာ မထွက်ပါ။"
                     )
 
-                text = shorten_burmese_text(
-                    text
-                )
+                # IMPORTANT:
+                # Gemini translation ကို ဒီနေရာမှာ
+                # character limit နဲ့ ထပ်မဖြတ်တော့ပါ။
 
                 translated[idx] = text
 
