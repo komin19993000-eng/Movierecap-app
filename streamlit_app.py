@@ -46,13 +46,8 @@ DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 RETRY_STATUS = {429, 500, 502, 503, 504}
 
 MAX_SOURCE_CHARS = 42
-MAX_BURMESE_CHARS = 50
 MAX_SEGMENT_DURATION = 6.0
 PAUSE_SPLIT = 0.65
-
-MAX_TTS_SPEEDUP = 1.15
-MIN_TTS_SPEED = 0.80
-MAX_TTS_SPEED = 1.30
 
 VOICE_GAP = 0.04
 
@@ -64,10 +59,6 @@ VOICE_GAP = 0.04
 st.markdown(
     """
 <style>
-
-/* =========================
-   MAIN BACKGROUND
-   ========================= */
 
 .stApp {
     background:
@@ -96,19 +87,11 @@ st.markdown(
     color: #000000;
 }
 
-/* =========================
-   CONTENT WIDTH
-   ========================= */
-
 .block-container {
     max-width: 1120px;
     padding-top: 1.5rem;
     padding-bottom: 3rem;
 }
-
-/* =========================
-   ALL NORMAL TEXT BLACK
-   ========================= */
 
 .stApp,
 .stApp p,
@@ -123,10 +106,6 @@ st.markdown(
 .stApp h6 {
     color: #000000;
 }
-
-/* =========================
-   HERO
-   ========================= */
 
 .hero-box {
     padding: 28px 24px;
@@ -165,10 +144,6 @@ st.markdown(
     font-weight: 700;
 }
 
-/* =========================
-   SECTION TITLE
-   ========================= */
-
 .section-title {
     margin-top: 28px;
     margin-bottom: 14px;
@@ -195,10 +170,6 @@ st.markdown(
     font-weight: 900;
 }
 
-/* =========================
-   INPUTS
-   ========================= */
-
 div[data-baseweb="input"] > div,
 div[data-baseweb="textarea"] > div,
 div[data-baseweb="select"] > div {
@@ -217,10 +188,6 @@ textarea {
 textarea {
     border-radius: 14px !important;
 }
-
-/* =========================
-   FILE UPLOADER
-   ========================= */
 
 div[data-testid="stFileUploader"] {
     background:
@@ -246,17 +213,9 @@ div[data-testid="stFileUploader"] button {
     border: 2px solid #000000 !important;
 }
 
-/* =========================
-   SELECTBOX
-   ========================= */
-
 div[data-baseweb="select"] * {
     color: #000000 !important;
 }
-
-/* =========================
-   BUTTONS
-   ========================= */
 
 div.stButton > button,
 div[data-testid="stFormSubmitButton"] button,
@@ -298,10 +257,6 @@ div[data-testid="stFormSubmitButton"] button:active {
     box-shadow: 0 2px 0 #000000 !important;
 }
 
-/* =========================
-   DOWNLOAD BUTTON
-   ========================= */
-
 div[data-testid="stDownloadButton"] button {
 
     min-height: 52px;
@@ -327,10 +282,6 @@ div[data-testid="stDownloadButton"] button {
     box-shadow: 0 5px 0 #000000 !important;
 }
 
-/* =========================
-   PROGRESS
-   ========================= */
-
 div[data-testid="stProgress"] > div {
     background: #ffffff !important;
     border: 2px solid #000000;
@@ -347,10 +298,6 @@ div[data-testid="stProgress"] div[role="progressbar"] {
         ) !important;
 }
 
-/* =========================
-   ALERT BOXES
-   ========================= */
-
 div[data-testid="stAlert"] {
     border: 2px solid #000000 !important;
     border-radius: 14px !important;
@@ -359,10 +306,6 @@ div[data-testid="stAlert"] {
 div[data-testid="stAlert"] * {
     color: #000000 !important;
 }
-
-/* =========================
-   SRT PREVIEW
-   ========================= */
 
 .srt-title {
     margin-top: 22px;
@@ -373,10 +316,6 @@ div[data-testid="stAlert"] * {
     font-size: 25px;
     font-weight: 900;
 }
-
-/* =========================
-   DIVIDER
-   ========================= */
 
 hr {
     border: 0 !important;
@@ -393,10 +332,6 @@ hr {
     border-radius: 10px;
     margin: 34px 0 !important;
 }
-
-/* =========================
-   FOOTER
-   ========================= */
 
 .footer {
     text-align: center;
@@ -551,23 +486,26 @@ def extract_audio(
 
 
 # ============================================================
-# GEMINI (WITH KEY ROTATION)
+# GEMINI
 # ============================================================
 
 def get_gemini_keys() -> list[str]:
     keys = []
-    
-    # 1. Check GEMINI_API_KEY (support comma-separated keys)
+
     main_key = get_secret("GEMINI_API_KEY")
+
     if main_key:
         for k in main_key.split(","):
             k = k.strip()
+
             if k and k not in keys:
                 keys.append(k)
 
-    # 2. Check numbered keys like GEMINI_API_KEY_1, GEMINI_API_KEY_2, ...
     for i in range(1, 10):
-        key = get_secret(f"GEMINI_API_KEY_{i}")
+        key = get_secret(
+            f"GEMINI_API_KEY_{i}"
+        )
+
         if key and key not in keys:
             keys.append(key)
 
@@ -582,8 +520,14 @@ def get_gemini_keys() -> list[str]:
 
 def get_gemini_client(key_index: int = 0):
     keys = get_gemini_keys()
-    selected_key = keys[key_index % len(keys)]
-    return genai.Client(api_key=selected_key)
+
+    selected_key = keys[
+        key_index % len(keys)
+    ]
+
+    return genai.Client(
+        api_key=selected_key
+    )
 
 
 def get_gemini_model() -> str:
@@ -622,67 +566,6 @@ def extract_json_array(text: str):
     )
 
 
-def shorten_burmese_text(text: str) -> str:
-
-    text = clean_text(text)
-
-    if len(text) <= MAX_BURMESE_CHARS:
-        return text
-
-    punctuation_positions = []
-
-    for mark in [
-        "။",
-        "၊",
-        ",",
-        ".",
-        "!",
-        "?",
-        "…",
-    ]:
-        pos = text.rfind(
-            mark,
-            0,
-            MAX_BURMESE_CHARS + 1,
-        )
-
-        if pos >= 20:
-            punctuation_positions.append(
-                pos + 1
-            )
-
-    if punctuation_positions:
-        return clean_text(
-            text[:max(punctuation_positions)]
-        )
-
-    words = text.split()
-
-    result = []
-    length = 0
-
-    for word in words:
-
-        extra = len(word) + (
-            1 if result else 0
-        )
-
-        if length + extra > MAX_BURMESE_CHARS:
-            break
-
-        result.append(word)
-        length += extra
-
-    shortened = clean_text(
-        " ".join(result)
-    )
-
-    if shortened:
-        return shortened
-
-    return text[:MAX_BURMESE_CHARS].strip()
-
-
 def translate_batch(client_ignored, rows):
 
     payload = [
@@ -704,24 +587,26 @@ Translate every dialogue into natural spoken Burmese
 that sounds like a real Myanmar movie dub.
 
 IMPORTANT:
-The Burmese sentence will be spoken by TTS.
-Therefore it MUST be concise and easy to speak naturally.
+The Burmese translation will later be converted into
+Burmese TTS voice.
 
 Rules:
-- Preserve the original meaning.
-- Preserve names and important proper nouns.
+- Preserve the complete original meaning.
+- Preserve important details.
+- Preserve names and proper nouns.
 - Preserve emotion, intention and tone.
-- Do NOT summarize away important meaning.
+- Do NOT summarize.
+- Do NOT remove information just to make the sentence shorter.
+- Do NOT truncate the sentence.
+- Do NOT create disconnected or incomplete Burmese sentences.
 - Do NOT add explanations.
 - Do NOT add quotation marks unless required by meaning.
-- Do NOT translate word-for-word if that sounds unnatural.
+- Do NOT translate word-for-word when unnatural.
 - Use natural conversational Burmese.
-- Avoid unnecessary filler words.
-- Avoid repeating information.
-- Prefer shorter natural Burmese wording.
-- Aim for approximately 25–50 Burmese characters.
-- Never intentionally create a very long sentence.
-- The subtitle must be suitable for dubbing within its timestamp.
+- Keep the sentence as concise as naturally possible,
+  but meaning is more important than character count.
+- It is acceptable for a translation to be longer when
+  necessary to preserve the complete meaning.
 - Return ONLY JSON.
 - Return exactly {len(payload)} objects.
 - Keep exact id values.
@@ -737,20 +622,30 @@ INPUT:
 
     model = get_gemini_model()
     keys = get_gemini_keys()
-    
+
     if "current_key_index" not in st.session_state:
         st.session_state.current_key_index = 0
 
     total_keys = len(keys)
+
     attempts = 0
     max_attempts = total_keys * 3
+
     last_error = ""
 
     while attempts < max_attempts:
-        current_idx = st.session_state.current_key_index % total_keys
-        client = get_gemini_client(current_idx)
+
+        current_idx = (
+            st.session_state.current_key_index
+            % total_keys
+        )
+
+        client = get_gemini_client(
+            current_idx
+        )
 
         try:
+
             response = client.models.generate_content(
                 model=model,
                 contents=prompt,
@@ -760,7 +655,11 @@ INPUT:
             )
 
             data = extract_json_array(
-                getattr(response, "text", "")
+                getattr(
+                    response,
+                    "text",
+                    "",
+                )
             )
 
             if (
@@ -775,10 +674,15 @@ INPUT:
 
             for item in data:
 
-                idx = int(item["id"])
+                idx = int(
+                    item["id"]
+                )
 
                 text = clean_text(
-                    item.get("burmese", "")
+                    item.get(
+                        "burmese",
+                        "",
+                    )
                 )
 
                 if not text:
@@ -787,10 +691,10 @@ INPUT:
                         "ဘာသာပြန်စာ မထွက်ပါ။"
                     )
 
-                text = shorten_burmese_text(
-                    text
-                )
-
+                # IMPORTANT:
+                # Burmese translation ကို မဖြတ်တော့ပါ။
+                # Gemini ထွက်လာတဲ့ သဘာဝကျတဲ့စာကို
+                # အပြည့်အဝ ထိန်းသိမ်းထားမည်။
                 translated[idx] = text
 
             if len(translated) != len(payload):
@@ -801,6 +705,7 @@ INPUT:
             return translated
 
         except Exception as exc:
+
             last_error = str(exc)
             low = last_error.lower()
 
@@ -821,14 +726,33 @@ INPUT:
                 ]
             )
 
-            if transient and total_keys > 1:
-                # Key limit သို့မဟုတ် transient error တက်ပါက နောက် Key တစ်ခုသို့ ပြောင်းသုံးမည်
-                st.session_state.current_key_index = (st.session_state.current_key_index + 1) % total_keys
+            if (
+                transient
+                and total_keys > 1
+            ):
+
+                st.session_state.current_key_index = (
+                    st.session_state.current_key_index + 1
+                ) % total_keys
+
                 attempts += 1
-                time.sleep(1 + random.random())
-            elif transient and attempts < 2:
+
+                time.sleep(
+                    1 + random.random()
+                )
+
+            elif (
+                transient
+                and attempts < 2
+            ):
+
                 attempts += 1
-                time.sleep((2 ** attempts) + random.random())
+
+                time.sleep(
+                    (2 ** attempts)
+                    + random.random()
+                )
+
             else:
                 break
 
@@ -873,12 +797,18 @@ def words_to_segments(words):
     )
 
     segments = []
+
     current = []
 
     def word_text(item):
+
         return str(
-            item.get("punctuated_word")
-            or item.get("word")
+            item.get(
+                "punctuated_word"
+            )
+            or item.get(
+                "word"
+            )
             or ""
         ).strip()
 
@@ -893,7 +823,10 @@ def words_to_segments(words):
         last = current[-1]
 
         start = float(
-            first.get("start", 0.0)
+            first.get(
+                "start",
+                0.0,
+            )
         )
 
         end = float(
@@ -949,7 +882,9 @@ def words_to_segments(words):
             proposed = clean_text(
                 " ".join(
                     word_text(x)
-                    for x in current + [word]
+                    for x in (
+                        current + [word]
+                    )
                 )
             )
 
@@ -980,6 +915,7 @@ def words_to_segments(words):
                 or len(proposed) > max_chars
                 or duration > max_duration
             ):
+
                 flush()
 
         current.append(word)
@@ -1019,7 +955,9 @@ def deepgram_transcribe(
             "audio/wav",
     }
 
-    audio_data = audio_path.read_bytes()
+    audio_data = (
+        audio_path.read_bytes()
+    )
 
     last_error = ""
 
@@ -1206,15 +1144,24 @@ def build_srt_segments(
     for item in source_segments:
 
         text = clean_text(
-            item.get("source", "")
+            item.get(
+                "source",
+                "",
+            )
         )
 
         start = float(
-            item.get("start", 0.0)
+            item.get(
+                "start",
+                0.0,
+            )
         )
 
         end = float(
-            item.get("end", start)
+            item.get(
+                "end",
+                start,
+            )
         )
 
         if (
@@ -1344,8 +1291,14 @@ def parse_srt(text: str):
 
     normalized = (
         str(text or "")
-        .replace("\r\n", "\n")
-        .replace("\r", "\n")
+        .replace(
+            "\r\n",
+            "\n",
+        )
+        .replace(
+            "\r",
+            "\n",
+        )
         .strip("\ufeff \n")
     )
 
@@ -1499,12 +1452,41 @@ def make_tts(
     text,
     voice,
     style,
+    speed,
     output_path,
 ):
 
     settings = VOICE_STYLES[
         style
     ]
+
+    # Speed slider ကို TTS rate ထဲမှာ
+    # တကယ်အသုံးချမည်။
+    #
+    # 1.00 = style rate အတိုင်း
+    # 0.80 = 20% နှေး
+    # 1.30 = 30% မြန်
+    speed_rate = int(
+        round(
+            (float(speed) - 1.0)
+            * 100
+        )
+    )
+
+    final_rate = (
+        settings["rate"]
+        + speed_rate
+    )
+
+    # Edge TTS rate ကို အလွန်အကျွံ
+    # မမြန်/မနှေးအောင် ကန့်သတ်ထားသည်။
+    final_rate = max(
+        -50,
+        min(
+            final_rate,
+            50,
+        ),
+    )
 
     errors = []
 
@@ -1519,7 +1501,7 @@ def make_tts(
                 edge_tts_save(
                     text,
                     voice,
-                    settings["rate"],
+                    final_rate,
                     settings["pitch"],
                     output_path,
                 )
@@ -1558,111 +1540,6 @@ def make_tts(
 
 
 # ============================================================
-# SAFE AUDIO SPEED
-# ============================================================
-
-def atempo_chain(
-    factor: float,
-) -> str:
-
-    factor = max(
-        MIN_TTS_SPEED,
-        min(
-            float(factor),
-            MAX_TTS_SPEEDUP,
-        ),
-    )
-
-    return f"atempo={factor:.6f}"
-
-
-def fit_tts_to_slot(
-    source: Path,
-    output: Path,
-    slot: float,
-    user_speed: float,
-):
-
-    raw_duration = ffprobe_duration(
-        source
-    )
-
-    slot = max(
-        0.20,
-        float(slot),
-    )
-
-    user_speed = max(
-        MIN_TTS_SPEED,
-        min(
-            float(user_speed),
-            MAX_TTS_SPEED,
-        ),
-    )
-
-    required_factor = (
-        raw_duration / slot
-    )
-
-    if required_factor <= 1.0:
-
-        factor = user_speed
-
-    else:
-
-        factor = max(
-            required_factor,
-            user_speed,
-        )
-
-        factor = min(
-            factor,
-            MAX_TTS_SPEEDUP,
-        )
-
-    result = run_cmd(
-        [
-            FFMPEG,
-            "-y",
-            "-hide_banner",
-            "-loglevel",
-            "error",
-            "-i",
-            str(source),
-            "-filter:a",
-            (
-                atempo_chain(factor)
-                + ",apad"
-            ),
-            "-c:a",
-            "aac",
-            "-b:a",
-            "160k",
-            "-ar",
-            "48000",
-            "-ac",
-            "2",
-            str(output),
-        ],
-        timeout=180,
-    )
-
-    if (
-        result.returncode != 0
-        or not output.exists()
-        or output.stat().st_size < 1000
-    ):
-
-        raise RuntimeError(
-            "Voiceover timing ပြင်မရပါ။\n"
-            + (
-                result.stderr
-                or ""
-            )
-        )
-
-
-# ============================================================
 # VOICEOVER
 # ============================================================
 
@@ -1678,61 +1555,30 @@ def build_voiceover(
     clips = []
     total = len(segments)
 
+    # အရင် dialogue ရဲ့ အသံပြီးဆုံးချိန်
+    # ကို မှတ်ထားမည်။
+    previous_end = 0.0
+
     for index, item in enumerate(
         segments,
         start=1,
     ):
 
-        start = max(
+        requested_start = max(
             0.0,
             float(item["start"]),
         )
 
-        current_end = max(
-            start + 0.20,
-            float(item["end"]),
+        text = clean_text(
+            item["burmese"]
         )
 
-        if index < total:
-
-            next_start = max(
-                current_end,
-                float(
-                    segments[index]["start"]
-                ),
-            )
-
-            available_slot = (
-                next_start
-                - start
-                - VOICE_GAP
-            )
-
-            slot = max(
-                current_end - start,
-                available_slot,
-            )
-
-        else:
-
-            slot = (
-                current_end
-                - start
-            )
-
-        slot = max(
-            0.20,
-            float(slot),
-        )
+        if not text:
+            continue
 
         raw = (
             work_dir
             / f"tts_{index:04d}.mp3"
-        )
-
-        fitted = (
-            work_dir
-            / f"clip_{index:04d}.m4a"
         )
 
         progress_callback(
@@ -1748,30 +1594,47 @@ def build_voiceover(
             ),
         )
 
-        text = clean_text(
-            item["burmese"]
-        )
+        # ----------------------------------------------------
+        # IMPORTANT VOICE CHANGE
+        #
+        # Subtitle ကို အတင်း fit မလုပ်တော့ပါ။
+        # စာကို မဖြတ်ပါ။
+        # အသံကို အတင်း 1.5x / 2x / 3x မမြန်စေပါ။
+        # ----------------------------------------------------
 
         make_tts(
             text,
             voice,
             style,
+            speed,
             raw,
         )
 
-        fit_tts_to_slot(
-            raw,
-            fitted,
-            slot,
-            speed,
+        raw_duration = ffprobe_duration(
+            raw
+        )
+
+        # Dialogue နှစ်ခုအသံ မထပ်အောင်
+        # လိုအပ်ရင် နောက် dialogue ကို
+        # အရင်အသံပြီးတဲ့နောက်မှ စမည်။
+        actual_start = max(
+            requested_start,
+            previous_end + VOICE_GAP,
+        )
+
+        actual_end = (
+            actual_start
+            + raw_duration
         )
 
         clips.append(
             (
-                start,
-                fitted,
+                actual_start,
+                raw,
             )
         )
+
+        previous_end = actual_end
 
     if not clips:
 
@@ -2017,7 +1880,9 @@ if make_srt_button:
             )
 
             status = st.empty()
-            progress = st.progress(0.0)
+            progress = st.progress(
+                0.0
+            )
 
             status.info(
                 "🎧 Audio ထုတ်နေသည်..."
@@ -2028,7 +1893,9 @@ if make_srt_button:
                 audio_path,
             )
 
-            progress.progress(0.12)
+            progress.progress(
+                0.12
+            )
 
             status.info(
                 "🎙️ Dialogue timestamp ရယူနေသည်..."
@@ -2040,7 +1907,9 @@ if make_srt_button:
                 )
             )
 
-            progress.progress(0.25)
+            progress.progress(
+                0.25
+            )
 
             status.info(
                 "🤖 မြန်မာလို ဘာသာပြန်နေသည်..."
@@ -2048,13 +1917,20 @@ if make_srt_button:
 
             translated_segments = (
                 build_srt_segments(
-                    get_gemini_client(st.session_state.current_key_index),
+                    get_gemini_client(
+                        st.session_state.current_key_index
+                    ),
                     source_segments,
                     lambda p, text: (
                         progress.progress(
-                            min(p, 0.98)
+                            min(
+                                p,
+                                0.98,
+                            )
                         ),
-                        status.info(text),
+                        status.info(
+                            text
+                        ),
                     ),
                 )
             )
@@ -2077,9 +1953,12 @@ if make_srt_button:
             if not st.session_state.srt_name.lower().endswith(
                 ".srt"
             ):
+
                 st.session_state.srt_name += ".srt"
 
-            progress.progress(1.0)
+            progress.progress(
+                1.0
+            )
 
             status.success(
                 "✅ SRT ပြီးပါပြီ — "
@@ -2253,7 +2132,9 @@ if make_voice_button:
             work = Path(temp_dir)
 
             status = st.empty()
-            progress = st.progress(0.0)
+            progress = st.progress(
+                0.0
+            )
 
             voice_path = build_voiceover(
                 segments,
@@ -2265,9 +2146,14 @@ if make_voice_button:
                 work,
                 lambda p, text: (
                     progress.progress(
-                        min(p, 1.0)
+                        min(
+                            p,
+                            1.0,
+                        )
                     ),
-                    status.info(text),
+                    status.info(
+                        text
+                    ),
                 ),
             )
 
@@ -2283,6 +2169,7 @@ if make_voice_button:
             if not filename.lower().endswith(
                 ".m4a"
             ):
+
                 filename += ".m4a"
 
             st.session_state.voice_bytes = (
@@ -2293,7 +2180,9 @@ if make_voice_button:
                 filename
             )
 
-            progress.progress(1.0)
+            progress.progress(
+                1.0
+            )
 
             status.success(
                 "✅ Voiceover ပြီးပါပြီ"
