@@ -41,6 +41,11 @@ VOICE_STYLES = {
     "တက်ကြွ": {"rate": 8, "pitch": 2},
 }
 
+TRANSLATION_STYLES = {
+    "မူရင်းအတိုင်း သဘာဝကျကျ": "original",
+    "Movie Recap Style": "recap",
+}
+
 DEFAULT_GEMINI_MODEL = "gemini-3.6-flash"
 
 RETRY_STATUS = {429, 500, 502, 503, 504}
@@ -654,7 +659,9 @@ def shorten_burmese_text(
 
 def translate_batch(
     client_ignored,
-    rows
+    rows,
+    translation_style="original",
+    detected_language="auto",
 ):
 
     payload = [
@@ -671,31 +678,61 @@ def translate_batch(
         in enumerate(rows)
     ]
 
+    if translation_style == "recap":
+
+        style_rules = """
+TRANSLATION STYLE:
+Movie Recap Style.
+
+- Translate into natural Burmese movie-recap narration.
+- Make the Burmese sound like a professional Myanmar movie recap narrator.
+- Keep the important story information from the original.
+- Preserve character names, actions, emotions and important details.
+- Do NOT invent events that are not present in the original.
+- Do NOT remove important story information just to make it shorter.
+- Make the wording smooth and engaging for narration.
+- Do NOT translate word-for-word when that sounds unnatural.
+- Keep each subtitle suitable for its timestamp.
+"""
+
+    else:
+
+        style_rules = """
+TRANSLATION STYLE:
+Original Meaning — Natural Burmese.
+
+- Translate the original dialogue naturally into Burmese.
+- Preserve the original meaning as completely as possible.
+- Preserve the original information, intention, emotion and tone.
+- Do NOT summarize the dialogue.
+- Do NOT turn the dialogue into a movie recap.
+- Do NOT intentionally remove words or important meaning just to make it shorter.
+- Do NOT add information that is not in the original.
+- Do NOT translate word-for-word when that sounds unnatural.
+- Use natural spoken Burmese.
+- Keep the translated sentence suitable for dubbing within its timestamp.
+"""
+
     prompt = f"""
 You are a professional Myanmar movie dubbing translator.
 
-Translate every dialogue into natural spoken Burmese
-that sounds like a real Myanmar movie dub.
+The source video language was automatically detected as:
+{detected_language}
+
+Translate every dialogue into natural spoken Burmese.
+
+{style_rules}
 
 IMPORTANT:
 The Burmese sentence will be spoken by TTS.
-Therefore it MUST be concise and easy to speak naturally.
+Therefore it MUST be natural and easy to speak.
 
-Rules:
-- Preserve the original meaning.
+General rules:
 - Preserve names and important proper nouns.
-- Preserve emotion, intention and tone.
-- Do NOT summarize away important meaning.
+- Preserve emotion and intention.
 - Do NOT add explanations.
 - Do NOT add quotation marks unless required by meaning.
-- Do NOT translate word-for-word if that sounds unnatural.
-- Use natural conversational Burmese.
-- Avoid unnecessary filler words.
-- Avoid repeating information.
-- Prefer shorter natural Burmese wording.
-- Aim for approximately 25–50 Burmese characters.
-- Never intentionally create a very long sentence.
-- The subtitle must be suitable for dubbing within its timestamp.
+- Do NOT invent information.
 - Return ONLY JSON.
 - Return exactly {len(payload)} objects.
 - Keep exact id values.
@@ -1149,6 +1186,48 @@ def deepgram_transcribe(
                     [],
                 ) or []
 
+                detected_language = "auto"
+
+                if channels:
+
+                    channel_language = (
+                        channels[0].get(
+                            "detected_language",
+                            "",
+                        )
+                    )
+
+                    if channel_language:
+                        detected_language = (
+                            str(
+                                channel_language
+                            )
+                        )
+
+                    alternatives = (
+                        channels[0].get(
+                            "alternatives",
+                            [],
+                        )
+                        or []
+                    )
+
+                    if alternatives:
+
+                        alternative_language = (
+                            alternatives[0].get(
+                                "detected_language",
+                                "",
+                            )
+                        )
+
+                        if alternative_language:
+                            detected_language = (
+                                str(
+                                    alternative_language
+                                )
+                            )
+
                 words = []
 
                 if channels:
@@ -1180,7 +1259,10 @@ def deepgram_transcribe(
                     )
 
                     if segments:
-                        return segments
+                        return (
+                            segments,
+                            detected_language,
+                        )
 
                 utterances = (
                     results.get(
@@ -1229,7 +1311,10 @@ def deepgram_transcribe(
                         )
 
                 if fallback:
-                    return fallback
+                    return (
+                        fallback,
+                        detected_language,
+                    )
 
                 raise RuntimeError(
                     "Deepgram က transcript "
@@ -1311,6 +1396,8 @@ def build_srt_segments(
     client,
     source_segments,
     progress_callback,
+    translation_style="original",
+    detected_language="auto",
 ):
 
     rows = []
@@ -1376,6 +1463,8 @@ def build_srt_segments(
             translate_batch(
                 client,
                 batch,
+                translation_style,
+                detected_language,
             )
         )
 
@@ -1787,19 +1876,6 @@ def fit_tts_to_slot(
         # ====================================================
         # IMPORTANT FIX
         # ====================================================
-        #
-        # Previous version capped the speed at 1.15 and then
-        # used atrim=duration=slot.
-        #
-        # That caused the final words of a Burmese sentence
-        # to be CUT OFF when TTS was longer than the slot.
-        #
-        # Now we calculate the actual factor required to make
-        # the COMPLETE TTS fit inside the available slot.
-        #
-        # No atrim is used.
-        # Therefore the spoken sentence is not chopped.
-        # ====================================================
 
         factor = max(
             required_factor,
@@ -1974,9 +2050,6 @@ def build_voiceover(
 
     # ========================================================
     # FINAL SRT TIMELINE
-    # ========================================================
-    # The final voiceover must never continue beyond
-    # the last subtitle timestamp.
     # ========================================================
 
     timeline_end = max(
@@ -2167,434 +2240,4 @@ video_file = st.file_uploader(
 )
 
 with st.form(
-    "srt_form",
-    clear_on_submit=False,
-):
-
-    srt_output_name = st.text_input(
-        "💾 SRT filename",
-        value=(
-            Path(
-                video_file.name
-            ).stem
-            + "_myanmar.srt"
-        )
-        if video_file
-        else "myanmar.srt",
-    )
-
-    make_srt_button = (
-        st.form_submit_button(
-            "📝 မြန်မာ SRT ထုတ်မယ်",
-            type="primary",
-            use_container_width=True,
-        )
-    )
-
-
-if make_srt_button:
-
-    if not video_file:
-
-        st.error(
-            "Video တစ်ခုအရင်တင်ပါ။"
-        )
-
-        st.stop()
-
-    try:
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-
-            work = Path(temp_dir)
-
-            video_path = (
-                work
-                / "input_video"
-            )
-
-            audio_path = (
-                work
-                / "audio.wav"
-            )
-
-            video_path.write_bytes(
-                video_file.getbuffer()
-            )
-
-            status = st.empty()
-            progress = st.progress(
-                0.0
-            )
-
-            status.info(
-                "🎧 Audio ထုတ်နေသည်..."
-            )
-
-            extract_audio(
-                video_path,
-                audio_path,
-            )
-
-            progress.progress(
-                0.12
-            )
-
-            status.info(
-                "🎙️ Dialogue timestamp ရယူနေသည်..."
-            )
-
-            source_segments = (
-                deepgram_transcribe(
-                    audio_path
-                )
-            )
-
-            progress.progress(
-                0.25
-            )
-
-            status.info(
-                "🤖 မြန်မာလို ဘာသာပြန်နေသည်..."
-            )
-
-            translated_segments = (
-                build_srt_segments(
-                    get_gemini_client(
-                        st.session_state.current_key_index
-                    ),
-                    source_segments,
-                    lambda p, text: (
-                        progress.progress(
-                            min(p, 0.98)
-                        ),
-                        status.info(
-                            text
-                        ),
-                    ),
-                )
-            )
-
-            srt_text = make_srt(
-                translated_segments
-            )
-
-            st.session_state.srt_text = (
-                srt_text
-            )
-
-            st.session_state.srt_name = (
-                safe_filename(
-                    srt_output_name,
-                    "myanmar.srt",
-                )
-            )
-
-            if not (
-                st.session_state
-                .srt_name
-                .lower()
-                .endswith(".srt")
-            ):
-
-                st.session_state.srt_name += (
-                    ".srt"
-                )
-
-            progress.progress(
-                1.0
-            )
-
-            status.success(
-                "✅ SRT ပြီးပါပြီ — "
-                f"{len(translated_segments)} "
-                "subtitle lines"
-            )
-
-    except Exception as exc:
-
-        st.error(
-            "SRT ထုတ်ရာမှာ အမှားဖြစ်ပါတယ်။"
-        )
-
-        st.exception(exc)
-
-
-if st.session_state.srt_text:
-
-    st.markdown(
-        '<div class="srt-title">'
-        '📄 Myanmar SRT Preview'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    # ========================================================
-    # PREVIEW FIX
-    # ========================================================
-    # Do not use a persistent widget key here.
-    # The old key could keep stale preview content even when
-    # session_state.srt_text had the complete new SRT.
-    # ========================================================
-
-    st.text_area(
-        "SRT",
-        value=st.session_state.srt_text,
-        height=300,
-        label_visibility="collapsed",
-    )
-
-    st.download_button(
-        "⬇️ Download Myanmar SRT",
-        data=(
-            st.session_state
-            .srt_text
-            .encode("utf-8-sig")
-        ),
-        file_name=(
-            st.session_state
-            .srt_name
-        ),
-        mime="application/x-subrip",
-        use_container_width=True,
-    )
-
-
-# ============================================================
-# STEP 2
-# ============================================================
-
-st.markdown("---")
-
-st.markdown(
-    '<div class="section-title">'
-    '② SRT → မြန်မာ Voiceover'
-    '</div>',
-    unsafe_allow_html=True,
-)
-
-srt_file = st.file_uploader(
-    "📄 SRT ဖိုင်တင်ပါ",
-    type=["srt"],
-    key="voice_srt",
-)
-
-with st.form(
-    "voice_form",
-    clear_on_submit=False,
-):
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        selected_voice = st.selectbox(
-            "🎙️ Voice",
-            list(VOICES.keys()),
-        )
-
-    with col2:
-
-        selected_style = st.selectbox(
-            "🎭 Voice Style",
-            list(
-                VOICE_STYLES.keys()
-            ),
-        )
-
-    col3, col4 = st.columns(2)
-
-    with col3:
-
-        selected_speed = st.slider(
-            "⚡ Speed",
-            0.70,
-            1.30,
-            1.00,
-            0.05,
-        )
-
-    with col4:
-
-        output_filename = st.text_input(
-            "💾 Voiceover filename",
-            value=(
-                "myanmar_voiceover.m4a"
-            ),
-        )
-
-    make_voice_button = (
-        st.form_submit_button(
-            "🗣️ Voiceover ထုတ်မယ်",
-            type="primary",
-            use_container_width=True,
-        )
-    )
-
-
-if make_voice_button:
-
-    source_srt = None
-
-    if srt_file:
-
-        source_srt = (
-            srt_file
-            .getvalue()
-            .decode(
-                "utf-8-sig",
-                errors="replace",
-            )
-        )
-
-    elif st.session_state.srt_text:
-
-        source_srt = (
-            st.session_state.srt_text
-        )
-
-    if not source_srt:
-
-        st.error(
-            "SRT ဖိုင်တင်ပါ "
-            "(သို့) အဆင့် ၁ မှာ SRT အရင်ထုတ်ပါ။"
-        )
-
-        st.stop()
-
-    try:
-
-        segments, fixed_count = (
-            parse_srt(
-                source_srt
-            )
-        )
-
-        if fixed_count:
-
-            st.info(
-                "⏱️ SRT timing ကို "
-                "အလိုအလျောက်ပြင်ပြီးပါပြီ — "
-                f"{fixed_count} ခု"
-            )
-
-        else:
-
-            st.success(
-                "⏱️ SRT timing OK — "
-                f"{len(segments)} lines"
-            )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-
-            work = Path(temp_dir)
-
-            status = st.empty()
-            progress = st.progress(
-                0.0
-            )
-
-            voice_path = build_voiceover(
-                segments,
-                VOICES[
-                    selected_voice
-                ],
-                selected_style,
-                selected_speed,
-                work,
-                lambda p, text: (
-                    progress.progress(
-                        min(p, 1.0)
-                    ),
-                    status.info(
-                        text
-                    ),
-                ),
-            )
-
-            voice_bytes = (
-                voice_path.read_bytes()
-            )
-
-            filename = safe_filename(
-                output_filename,
-                "myanmar_voiceover.m4a",
-            )
-
-            if not filename.lower().endswith(
-                ".m4a"
-            ):
-
-                filename += ".m4a"
-
-            st.session_state.voice_bytes = (
-                voice_bytes
-            )
-
-            st.session_state.voice_name = (
-                filename
-            )
-
-            progress.progress(
-                1.0
-            )
-
-            status.success(
-                "✅ Voiceover ပြီးပါပြီ"
-            )
-
-    except Exception as exc:
-
-        st.error(
-            "Voiceover ထုတ်ရာမှာ "
-            "အမှားဖြစ်ပါတယ်။"
-        )
-
-        st.exception(exc)
-
-
-# ============================================================
-# VOICE PREVIEW
-# ============================================================
-
-if st.session_state.voice_bytes:
-
-    st.markdown(
-        '<div class="srt-title">'
-        '🔊 Voiceover Preview'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.audio(
-        st.session_state.voice_bytes,
-        format="audio/mp4",
-    )
-
-    st.download_button(
-        "⬇️ Download Voiceover",
-        data=(
-            st.session_state
-            .voice_bytes
-        ),
-        file_name=(
-            st.session_state
-            .voice_name
-        ),
-        mime="audio/mp4",
-        use_container_width=True,
-    )
-
-
-# ============================================================
-# FOOTER
-# ============================================================
-
-st.markdown("---")
-
-st.markdown(
-    '<div class="footer">'
-    '🎬 Myanmar Movie AI'
-    '</div>',
-    unsafe_allow_html=True,
-)
+    "
