@@ -2679,3 +2679,1687 @@ st.markdown(
     '</div>',
     unsafe_allow_html=True,
 )
+# ============================================================
+# STEP 3 — VISUAL VIDEO EDITOR
+# ============================================================
+
+st.markdown("---")
+
+st.markdown(
+    '<div class="section-title">'
+    '③ 🎬 Visual Video Editor'
+    '</div>',
+    unsafe_allow_html=True,
+)
+
+st.markdown(
+    """
+<div style="
+    padding:18px;
+    margin-bottom:18px;
+    border-radius:18px;
+    border:3px solid #000000;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(0,229,255,.20),
+            rgba(123,60,255,.18),
+            rgba(255,41,156,.18)
+        );
+    box-shadow:0 6px 0 #000000;
+">
+    <b>🎥 Video ကိုတင်ပြီး Preview Setting တွေပြောင်းကြည့်နိုင်ပါတယ်။</b><br>
+    Caption, Hook, Watermark, Blur, Flip, Ratio, Background
+    စတာတွေကို Editor တစ်နေရာထဲမှာ ပြင်နိုင်ပါတယ်။
+</div>
+""",
+    unsafe_allow_html=True,
+)
+
+
+# ============================================================
+# EDITOR SESSION STATE
+# ============================================================
+
+if "editor_preview_bytes" not in st.session_state:
+    st.session_state.editor_preview_bytes = None
+
+if "editor_preview_name" not in st.session_state:
+    st.session_state.editor_preview_name = "editor_preview.mp4"
+
+if "editor_export_bytes" not in st.session_state:
+    st.session_state.editor_export_bytes = None
+
+if "editor_export_name" not in st.session_state:
+    st.session_state.editor_export_name = "myanmar_edited.mp4"
+
+if "editor_video_name" not in st.session_state:
+    st.session_state.editor_video_name = ""
+
+if "editor_srt_cache" not in st.session_state:
+    st.session_state.editor_srt_cache = ""
+
+
+# ============================================================
+# EDITOR HELPERS
+# ============================================================
+
+def editor_run_cmd(
+    args,
+    timeout=1800,
+):
+    return subprocess.run(
+        args,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        text=True,
+        check=False,
+        timeout=timeout,
+    )
+
+
+def editor_escape_drawtext(
+    text: str,
+) -> str:
+    """
+    FFmpeg drawtext အတွက် special characters escape လုပ်ခြင်း။
+    """
+    value = str(text or "")
+
+    value = value.replace(
+        "\\",
+        r"\\",
+    )
+
+    value = value.replace(
+        ":",
+        r"\:",
+    )
+
+    value = value.replace(
+        "'",
+        r"\'",
+    )
+
+    value = value.replace(
+        "%",
+        r"\%",
+    )
+
+    value = value.replace(
+        "[",
+        r"\[",
+    )
+
+    value = value.replace(
+        "]",
+        r"\]",
+    )
+
+    value = value.replace(
+        ",",
+        r"\,",
+    )
+
+    return value
+
+
+def editor_parse_color(
+    value: str,
+) -> str:
+    """
+    FFmpeg color value ကို safe format ပြောင်းပေးခြင်း။
+    """
+    value = str(value or "").strip()
+
+    if not value:
+        return "white"
+
+    if value.startswith("#"):
+        return "0x" + value[1:]
+
+    return value
+
+
+def editor_hex_to_rgb(
+    value: str,
+):
+    value = str(value or "").strip()
+
+    if value.startswith("#"):
+        value = value[1:]
+
+    if len(value) != 6:
+        return 255, 255, 255
+
+    try:
+        return (
+            int(value[0:2], 16),
+            int(value[2:4], 16),
+            int(value[4:6], 16),
+        )
+    except Exception:
+        return 255, 255, 255
+
+
+def editor_get_font_path():
+    """
+    Server environment ထဲမှာ ရှိနိုင်တဲ့ font ကိုရှာမယ်။
+    Myanmar font မတွေ့ရင် DejaVu Sans ကို fallback သုံးမယ်။
+    """
+
+    candidates = [
+        "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Regular.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSansMyanmar-Bold.ttf",
+        "/usr/share/fonts/truetype/noto/NotoSans-Regular.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+    ]
+
+    for path in candidates:
+
+        if Path(path).exists():
+            return path
+
+    return ""
+
+
+def editor_get_video_info(
+    video_path: Path,
+):
+    result = editor_run_cmd(
+        [
+            FFMPEG,
+            "-hide_banner",
+            "-i",
+            str(video_path),
+        ],
+        timeout=120,
+    )
+
+    stderr = result.stderr or ""
+
+    duration_match = re.search(
+        r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)",
+        stderr,
+    )
+
+    width_match = re.search(
+        r"Video:.*?\s(\d{2,5})x(\d{2,5})",
+        stderr,
+    )
+
+    duration = 0.0
+    width = 0
+    height = 0
+
+    if duration_match:
+
+        duration = (
+            int(duration_match.group(1))
+            * 3600
+            + int(duration_match.group(2))
+            * 60
+            + float(duration_match.group(3))
+        )
+
+    if width_match:
+
+        width = int(
+            width_match.group(1)
+        )
+
+        height = int(
+            width_match.group(2)
+        )
+
+    return duration, width, height
+
+
+def editor_load_srt(
+    srt_text: str,
+):
+    if not srt_text.strip():
+        return []
+
+    try:
+
+        entries, _ = parse_srt(
+            srt_text
+        )
+
+        return entries
+
+    except Exception:
+
+        return []
+
+
+def editor_find_active_caption(
+    entries,
+    timestamp: float,
+):
+    for item in entries:
+
+        start = float(
+            item["start"]
+        )
+
+        end = float(
+            item["end"]
+        )
+
+        if (
+            start <= timestamp <= end
+        ):
+
+            return clean_text(
+                item.get(
+                    "burmese",
+                    "",
+                )
+            )
+
+    return ""
+
+
+def editor_build_preview(
+    video_path: Path,
+    output_path: Path,
+    preview_time: float,
+    ratio: str,
+    quality: str,
+    flip_video: bool,
+    brightness: float,
+    contrast: float,
+    saturation: float,
+    blur_enabled: bool,
+    blur_strength: int,
+    caption_enabled: bool,
+    caption_text: str,
+    caption_color: str,
+    caption_bg: str,
+    caption_bg_opacity: float,
+    caption_size: int,
+    caption_position: str,
+    hook_enabled: bool,
+    hook_text: str,
+    hook_color: str,
+    hook_size: int,
+    hook_position: str,
+    watermark_enabled: bool,
+    watermark_text: str,
+    watermark_opacity: float,
+    logo_path: Path | None,
+    background: str,
+):
+    """
+    Low-resolution preview renderer.
+    User setting ပြောင်းတိုင်း ခေါ်နိုင်အောင်
+    preview render ကို မြန်အောင် 720p အောက်သို့ scale လုပ်ထားသည်။
+    """
+
+    preview_time = max(
+        0.0,
+        float(preview_time),
+    )
+
+    filters = []
+
+    # --------------------------------------------------------
+    # SOURCE SCALE
+    # --------------------------------------------------------
+
+    if ratio == "TikTok / Reels — 9:16":
+
+        filters.append(
+            "scale=720:-2:force_original_aspect_ratio=decrease"
+        )
+
+        filters.append(
+            "pad=720:1280:(ow-iw)/2:(oh-ih)/2:"
+            f"color={editor_parse_color(background)}"
+        )
+
+    elif ratio == "YouTube — 16:9":
+
+        filters.append(
+            "scale=1280:-2:force_original_aspect_ratio=decrease"
+        )
+
+        filters.append(
+            "pad=1280:720:(ow-iw)/2:(oh-ih)/2:"
+            f"color={editor_parse_color(background)}"
+        )
+
+    else:
+
+        filters.append(
+            "scale=720:720:force_original_aspect_ratio=decrease"
+        )
+
+        filters.append(
+            "pad=720:720:(ow-iw)/2:(oh-ih)/2:"
+            f"color={editor_parse_color(background)}"
+        )
+
+    # --------------------------------------------------------
+    # FLIP
+    # --------------------------------------------------------
+
+    if flip_video:
+
+        filters.append(
+            "hflip"
+        )
+
+    # --------------------------------------------------------
+    # COLOR
+    # --------------------------------------------------------
+
+    color_filter = (
+        f"eq="
+        f"brightness={float(brightness):.3f}:"
+        f"contrast={float(contrast):.3f}:"
+        f"saturation={float(saturation):.3f}"
+    )
+
+    filters.append(
+        color_filter
+    )
+
+    # --------------------------------------------------------
+    # BLUR
+    # --------------------------------------------------------
+
+    if blur_enabled:
+
+        blur_value = max(
+            1,
+            min(
+                int(blur_strength),
+                40,
+            ),
+        )
+
+        filters.append(
+            f"boxblur={blur_value}:1"
+        )
+
+    # --------------------------------------------------------
+    # CAPTION
+    # --------------------------------------------------------
+
+    font_path = editor_get_font_path()
+
+    if caption_enabled and caption_text:
+
+        escaped_caption = (
+            editor_escape_drawtext(
+                caption_text
+            )
+        )
+
+        caption_color_ff = (
+            editor_parse_color(
+                caption_color
+            )
+        )
+
+        bg_color = editor_parse_color(
+            caption_bg
+        )
+
+        bg_rgb = editor_hex_to_rgb(
+            caption_bg
+        )
+
+        alpha = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    caption_bg_opacity
+                ),
+            ),
+        )
+
+        bg_alpha = int(
+            round(
+                alpha * 255
+            )
+        )
+
+        if caption_position == "အပေါ်":
+
+            y_expr = "70"
+
+        elif caption_position == "အလယ်":
+
+            y_expr = "(h-text_h)/2"
+
+        else:
+
+            y_expr = "h-text_h-70"
+
+        drawtext_parts = [
+            f"text='{escaped_caption}'",
+            f"fontcolor={caption_color_ff}",
+            f"fontsize={int(caption_size)}",
+            "x=(w-text_w)/2",
+            f"y={y_expr}",
+            "borderw=2",
+            "bordercolor=black",
+        ]
+
+        if font_path:
+
+            drawtext_parts.append(
+                "fontfile="
+                + font_path
+            )
+
+        # Semi-transparent background box
+        if bg_alpha > 0:
+
+            drawtext_parts.extend(
+                [
+                    f"box=1",
+                    f"boxcolor="
+                    f"{bg_color}@"
+                    f"{alpha:.2f}",
+                    "boxborderw=12",
+                ]
+            )
+
+        filters.append(
+            "drawtext="
+            + ":".join(
+                drawtext_parts
+            )
+        )
+
+    # --------------------------------------------------------
+    # HOOK
+    # --------------------------------------------------------
+
+    if hook_enabled and hook_text:
+
+        escaped_hook = (
+            editor_escape_drawtext(
+                hook_text
+            )
+        )
+
+        hook_color_ff = (
+            editor_parse_color(
+                hook_color
+            )
+        )
+
+        if hook_position == "အပေါ်":
+
+            hook_y = "45"
+
+        elif hook_position == "အလယ်":
+
+            hook_y = "(h-text_h)/2"
+
+        else:
+
+            hook_y = "h-text_h-120"
+
+        hook_parts = [
+            f"text='{escaped_hook}'",
+            f"fontcolor={hook_color_ff}",
+            f"fontsize={int(hook_size)}",
+            "x=(w-text_w)/2",
+            f"y={hook_y}",
+            "borderw=3",
+            "bordercolor=black",
+            "box=1",
+            "boxcolor=black@0.35",
+            "boxborderw=10",
+        ]
+
+        if font_path:
+
+            hook_parts.append(
+                "fontfile="
+                + font_path
+            )
+
+        filters.append(
+            "drawtext="
+            + ":".join(
+                hook_parts
+            )
+        )
+
+    # --------------------------------------------------------
+    # WATERMARK
+    # --------------------------------------------------------
+
+    if watermark_enabled and watermark_text:
+
+        escaped_watermark = (
+            editor_escape_drawtext(
+                watermark_text
+            )
+        )
+
+        watermark_alpha = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    watermark_opacity
+                ),
+            ),
+        )
+
+        watermark_parts = [
+            f"text='{escaped_watermark}'",
+            f"fontcolor=white@"
+            f"{watermark_alpha:.2f}",
+            "fontsize=22",
+            "x=w-text_w-25",
+            "y=h-text_h-25",
+            "borderw=2",
+            "bordercolor=black@0.55",
+        ]
+
+        if font_path:
+
+            watermark_parts.append(
+                "fontfile="
+                + font_path
+            )
+
+        filters.append(
+            "drawtext="
+            + ":".join(
+                watermark_parts
+            )
+        )
+
+    # --------------------------------------------------------
+    # VIDEO PREVIEW OUTPUT
+    # --------------------------------------------------------
+
+    vf = ",".join(
+        filters
+    )
+
+    command = [
+        FFMPEG,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-ss",
+        f"{preview_time:.3f}",
+        "-i",
+        str(video_path),
+        "-t",
+        "8",
+        "-vf",
+        vf,
+        "-an",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "28",
+        "-pix_fmt",
+        "yuv420p",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+
+    result = editor_run_cmd(
+        command,
+        timeout=300,
+    )
+
+    if (
+        result.returncode != 0
+        or not output_path.exists()
+        or output_path.stat().st_size < 1000
+    ):
+
+        raise RuntimeError(
+            "Preview render မအောင်မြင်ပါ။\n"
+            + (
+                result.stderr
+                or ""
+            )
+        )
+
+
+def editor_export_video(
+    video_path: Path,
+    output_path: Path,
+    ratio: str,
+    quality: str,
+    flip_video: bool,
+    brightness: float,
+    contrast: float,
+    saturation: float,
+    blur_enabled: bool,
+    blur_strength: int,
+    caption_enabled: bool,
+    caption_text: str,
+    caption_color: str,
+    caption_bg: str,
+    caption_bg_opacity: float,
+    caption_size: int,
+    caption_position: str,
+    hook_enabled: bool,
+    hook_text: str,
+    hook_color: str,
+    hook_size: int,
+    hook_position: str,
+    watermark_enabled: bool,
+    watermark_text: str,
+    watermark_opacity: float,
+    background: str,
+):
+    """
+    Final video export.
+    """
+
+    filters = []
+
+    # --------------------------------------------------------
+    # RATIO
+    # --------------------------------------------------------
+
+    if ratio == "TikTok / Reels — 9:16":
+
+        filters.append(
+            "scale=720:1280:force_original_aspect_ratio=decrease"
+        )
+
+        filters.append(
+            "pad=720:1280:(ow-iw)/2:(oh-ih)/2:"
+            f"color={editor_parse_color(background)}"
+        )
+
+    elif ratio == "YouTube — 16:9":
+
+        filters.append(
+            "scale=1280:720:force_original_aspect_ratio=decrease"
+        )
+
+        filters.append(
+            "pad=1280:720:(ow-iw)/2:(oh-ih)/2:"
+            f"color={editor_parse_color(background)}"
+        )
+
+    else:
+
+        filters.append(
+            "scale=720:720:force_original_aspect_ratio=decrease"
+        )
+
+        filters.append(
+            "pad=720:720:(ow-iw)/2:(oh-ih)/2:"
+            f"color={editor_parse_color(background)}"
+        )
+
+    # --------------------------------------------------------
+    # FLIP
+    # --------------------------------------------------------
+
+    if flip_video:
+
+        filters.append(
+            "hflip"
+        )
+
+    # --------------------------------------------------------
+    # COLOR
+    # --------------------------------------------------------
+
+    filters.append(
+        f"eq="
+        f"brightness={float(brightness):.3f}:"
+        f"contrast={float(contrast):.3f}:"
+        f"saturation={float(saturation):.3f}"
+    )
+
+    # --------------------------------------------------------
+    # BLUR
+    # --------------------------------------------------------
+
+    if blur_enabled:
+
+        blur_value = max(
+            1,
+            min(
+                int(blur_strength),
+                40,
+            ),
+        )
+
+        filters.append(
+            f"boxblur={blur_value}:1"
+        )
+
+    font_path = editor_get_font_path()
+
+    # --------------------------------------------------------
+    # CAPTION
+    # --------------------------------------------------------
+
+    if caption_enabled and caption_text:
+
+        escaped_caption = (
+            editor_escape_drawtext(
+                caption_text
+            )
+        )
+
+        caption_color_ff = (
+            editor_parse_color(
+                caption_color
+            )
+        )
+
+        bg_color = editor_parse_color(
+            caption_bg
+        )
+
+        alpha = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    caption_bg_opacity
+                ),
+            ),
+        )
+
+        if caption_position == "အပေါ်":
+
+            caption_y = "70"
+
+        elif caption_position == "အလယ်":
+
+            caption_y = "(h-text_h)/2"
+
+        else:
+
+            caption_y = "h-text_h-70"
+
+        parts = [
+            f"text='{escaped_caption}'",
+            f"fontcolor={caption_color_ff}",
+            f"fontsize={int(caption_size)}",
+            "x=(w-text_w)/2",
+            f"y={caption_y}",
+            "borderw=2",
+            "bordercolor=black",
+        ]
+
+        if font_path:
+
+            parts.append(
+                "fontfile="
+                + font_path
+            )
+
+        if alpha > 0:
+
+            parts.extend(
+                [
+                    "box=1",
+                    f"boxcolor="
+                    f"{bg_color}@"
+                    f"{alpha:.2f}",
+                    "boxborderw=12",
+                ]
+            )
+
+        filters.append(
+            "drawtext="
+            + ":".join(parts)
+        )
+
+    # --------------------------------------------------------
+    # HOOK
+    # --------------------------------------------------------
+
+    if hook_enabled and hook_text:
+
+        escaped_hook = (
+            editor_escape_drawtext(
+                hook_text
+            )
+        )
+
+        hook_color_ff = (
+            editor_parse_color(
+                hook_color
+            )
+        )
+
+        if hook_position == "အပေါ်":
+
+            hook_y = "45"
+
+        elif hook_position == "အလယ်":
+
+            hook_y = "(h-text_h)/2"
+
+        else:
+
+            hook_y = "h-text_h-120"
+
+        parts = [
+            f"text='{escaped_hook}'",
+            f"fontcolor={hook_color_ff}",
+            f"fontsize={int(hook_size)}",
+            "x=(w-text_w)/2",
+            f"y={hook_y}",
+            "borderw=3",
+            "bordercolor=black",
+            "box=1",
+            "boxcolor=black@0.35",
+            "boxborderw=10",
+        ]
+
+        if font_path:
+
+            parts.append(
+                "fontfile="
+                + font_path
+            )
+
+        filters.append(
+            "drawtext="
+            + ":".join(parts)
+        )
+
+    # --------------------------------------------------------
+    # WATERMARK
+    # --------------------------------------------------------
+
+    if watermark_enabled and watermark_text:
+
+        escaped_watermark = (
+            editor_escape_drawtext(
+                watermark_text
+            )
+        )
+
+        opacity = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    watermark_opacity
+                ),
+            ),
+        )
+
+        parts = [
+            f"text='{escaped_watermark}'",
+            f"fontcolor=white@"
+            f"{opacity:.2f}",
+            "fontsize=22",
+            "x=w-text_w-25",
+            "y=h-text_h-25",
+            "borderw=2",
+            "bordercolor=black@0.55",
+        ]
+
+        if font_path:
+
+            parts.append(
+                "fontfile="
+                + font_path
+            )
+
+        filters.append(
+            "drawtext="
+            + ":".join(parts)
+        )
+
+    vf = ",".join(
+        filters
+    )
+
+    # --------------------------------------------------------
+    # QUALITY
+    # --------------------------------------------------------
+
+    if quality == "High":
+
+        crf = "20"
+
+    elif quality == "Medium":
+
+        crf = "23"
+
+    else:
+
+        crf = "27"
+
+    command = [
+        FFMPEG,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video_path),
+        "-vf",
+        vf,
+        "-map",
+        "0:v:0",
+        "-map",
+        "0:a?",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "medium",
+        "-crf",
+        crf,
+        "-pix_fmt",
+        "yuv420p",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "192k",
+        "-movflags",
+        "+faststart",
+        str(output_path),
+    ]
+
+    result = editor_run_cmd(
+        command,
+        timeout=3600,
+    )
+
+    if (
+        result.returncode != 0
+        or not output_path.exists()
+        or output_path.stat().st_size < 5000
+    ):
+
+        raise RuntimeError(
+            "Edited video export မအောင်မြင်ပါ။\n"
+            + (
+                result.stderr
+                or ""
+            )
+        )
+
+
+# ============================================================
+# EDITOR SOURCE VIDEO
+# ============================================================
+
+editor_video = st.file_uploader(
+    "🎥 Editor အတွက် Video တင်ပါ",
+    type=[
+        "mp4",
+        "mov",
+        "mkv",
+        "webm",
+    ],
+    key="visual_editor_video",
+)
+
+
+if editor_video:
+
+    st.session_state.editor_video_name = (
+        editor_video.name
+    )
+
+    editor_temp_dir = Path(
+        tempfile.gettempdir()
+    ) / "myanmar_movie_ai_editor"
+
+    editor_temp_dir.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+
+    editor_source_path = (
+        editor_temp_dir
+        / safe_filename(
+            editor_video.name,
+            "editor_input.mp4",
+        )
+    )
+
+    editor_source_path.write_bytes(
+        editor_video.getbuffer()
+    )
+
+    # --------------------------------------------------------
+    # OPTIONAL SRT
+    # --------------------------------------------------------
+
+    st.markdown(
+        "### 📝 Caption Source"
+    )
+
+    editor_srt_source = st.text_area(
+        "SRT",
+        value=(
+            st.session_state.srt_text
+            if st.session_state.srt_text
+            else ""
+        ),
+        height=160,
+        key="editor_srt_text",
+        help=(
+            "အဆင့် ၁ က Myanmar SRT ရှိရင် "
+            "အလိုအလျောက်ထည့်ပေးထားပါမယ်။"
+        ),
+    )
+
+    editor_entries = (
+        editor_load_srt(
+            editor_srt_source
+        )
+    )
+
+    # --------------------------------------------------------
+    # VIDEO INFO
+    # --------------------------------------------------------
+
+    try:
+
+        (
+            editor_duration,
+            editor_width,
+            editor_height,
+        ) = editor_get_video_info(
+            editor_source_path
+        )
+
+    except Exception:
+
+        editor_duration = 0.0
+        editor_width = 0
+        editor_height = 0
+
+    if editor_duration > 0:
+
+        st.caption(
+            f"🎞️ {editor_width}×{editor_height}  "
+            f"• {editor_duration:.1f} sec"
+        )
+
+    # --------------------------------------------------------
+    # EDITOR LAYOUT
+    # --------------------------------------------------------
+
+    editor_left, editor_right = (
+        st.columns(
+            [1.25, 1],
+            gap="large",
+        )
+    )
+
+    # ========================================================
+    # LEFT — VIDEO PREVIEW
+    # ========================================================
+
+    with editor_left:
+
+        st.markdown(
+            "### 🎥 Live Preview"
+        )
+
+        if editor_duration > 0:
+
+            preview_time = st.slider(
+                "Preview Position",
+                0.0,
+                float(
+                    max(
+                        0.1,
+                        editor_duration - 0.1,
+                    )
+                ),
+                0.0,
+                0.5,
+                key="editor_preview_time",
+            )
+
+        else:
+
+            preview_time = 0.0
+
+        st.video(
+            str(
+                editor_source_path
+            ),
+            start_time=int(
+                preview_time
+            ),
+        )
+
+        st.caption(
+            "Setting ပြောင်းပြီး Preview ကို "
+            "ကြည့်နိုင်ပါတယ်။"
+        )
+
+    # ========================================================
+    # RIGHT — CONTROLS
+    # ========================================================
+
+    with editor_right:
+
+        st.markdown(
+            "### ⚙️ Editor Controls"
+        )
+
+        # ----------------------------------------------------
+        # VIDEO FORMAT
+        # ----------------------------------------------------
+
+        st.markdown(
+            "#### 📐 Video Size"
+        )
+
+        editor_ratio = st.selectbox(
+            "Platform Ratio",
+            [
+                "TikTok / Reels — 9:16",
+                "YouTube — 16:9",
+                "Square — 1:1",
+            ],
+            key="editor_ratio",
+        )
+
+        editor_quality = st.selectbox(
+            "Export Quality",
+            [
+                "High",
+                "Medium",
+                "Fast",
+            ],
+            index=1,
+            key="editor_quality",
+        )
+
+        editor_background = st.color_picker(
+            "🖼️ Background",
+            "#000000",
+            key="editor_background",
+        )
+
+        # ----------------------------------------------------
+        # TRANSFORM
+        # ----------------------------------------------------
+
+        st.markdown(
+            "#### 🔄 Transform"
+        )
+
+        editor_flip = st.checkbox(
+            "🔄 Flip Video",
+            value=False,
+            key="editor_flip",
+        )
+
+        # ----------------------------------------------------
+        # COLOR
+        # ----------------------------------------------------
+
+        st.markdown(
+            "#### 🎨 Color"
+        )
+
+        editor_brightness = st.slider(
+            "Brightness",
+            -1.0,
+            1.0,
+            0.0,
+            0.05,
+            key="editor_brightness",
+        )
+
+        editor_contrast = st.slider(
+            "Contrast",
+            0.5,
+            2.0,
+            1.0,
+            0.05,
+            key="editor_contrast",
+        )
+
+        editor_saturation = st.slider(
+            "Saturation",
+            0.0,
+            2.0,
+            1.0,
+            0.05,
+            key="editor_saturation",
+        )
+
+        # ----------------------------------------------------
+        # BLUR
+        # ----------------------------------------------------
+
+        st.markdown(
+            "#### 🫥 Blur / Mask"
+        )
+
+        editor_blur = st.checkbox(
+            "🫥 Blur Video",
+            value=False,
+            key="editor_blur",
+        )
+
+        editor_blur_strength = st.slider(
+            "Blur Strength",
+            1,
+            30,
+            8,
+            1,
+            disabled=not editor_blur,
+            key="editor_blur_strength",
+        )
+
+        # ----------------------------------------------------
+        # CAPTION
+        # ----------------------------------------------------
+
+        st.markdown(
+            "#### 📝 Caption"
+        )
+
+        editor_caption_enabled = st.checkbox(
+            "📝 Show Caption",
+            value=bool(
+                editor_entries
+            ),
+            key="editor_caption_enabled",
+        )
+
+        editor_caption_mode = st.radio(
+            "Caption Source",
+            [
+                "SRT အလိုအလျောက်",
+                "Manual",
+            ],
+            horizontal=True,
+            key="editor_caption_mode",
+        )
+
+        if (
+            editor_caption_mode
+            == "SRT အလိုအလျောက်"
+        ):
+
+            auto_caption = (
+                editor_find_active_caption(
+                    editor_entries,
+                    preview_time,
+                )
+            )
+
+            editor_caption_text = (
+                auto_caption
+            )
+
+        else:
+
+            editor_caption_text = st.text_input(
+                "Caption Text",
+                value="",
+                key="editor_manual_caption",
+            )
+
+        editor_caption_color = st.color_picker(
+            "Caption Color",
+            "#FFFFFF",
+            key="editor_caption_color",
+        )
+
+        editor_caption_bg = st.color_picker(
+            "Caption Background",
+            "#000000",
+            key="editor_caption_bg",
+        )
+
+        editor_caption_bg_opacity = (
+            st.slider(
+                "Caption Background Transparency",
+                0.0,
+                1.0,
+                0.55,
+                0.05,
+                key="editor_caption_bg_opacity",
+            )
+        )
+
+        editor_caption_size = st.slider(
+            "Caption Font Size",
+            20,
+            80,
+            42,
+            2,
+            key="editor_caption_size",
+        )
+
+        editor_caption_position = st.selectbox(
+            "Caption Position",
+            [
+                "အပေါ်",
+                "အလယ်",
+                "အောက်",
+            ],
+            index=2,
+            key="editor_caption_position",
+        )
+
+        # ----------------------------------------------------
+        # HOOK
+        # ----------------------------------------------------
+
+        st.markdown(
+            "#### 🎯 Hook"
+        )
+
+        editor_hook_enabled = st.checkbox(
+            "🎯 Show Hook",
+            value=False,
+            key="editor_hook_enabled",
+        )
+
+        editor_hook_text = st.text_input(
+            "Hook Text",
+            value="ဒီဇာတ်ကားမှာ ဘာဖြစ်မလဲ?",
+            disabled=not editor_hook_enabled,
+            key="editor_hook_text",
+        )
+
+        editor_hook_color = st.color_picker(
+            "Hook Color",
+            "#FFFFFF",
+            disabled=not editor_hook_enabled,
+            key="editor_hook_color",
+        )
+
+        editor_hook_size = st.slider(
+            "Hook Size",
+            25,
+            100,
+            52,
+            2,
+            disabled=not editor_hook_enabled,
+            key="editor_hook_size",
+        )
+
+        editor_hook_position = st.selectbox(
+            "Hook Position",
+            [
+                "အပေါ်",
+                "အလယ်",
+                "အောက်",
+            ],
+            index=0,
+            disabled=not editor_hook_enabled,
+            key="editor_hook_position",
+        )
+
+        # ----------------------------------------------------
+        # WATERMARK
+        # ----------------------------------------------------
+
+        st.markdown(
+            "#### 💧 Watermark"
+        )
+
+        editor_watermark_enabled = st.checkbox(
+            "💧 Show Watermark",
+            value=False,
+            key="editor_watermark_enabled",
+        )
+
+        editor_watermark_text = st.text_input(
+            "Watermark Text",
+            value="Myanmar Movie AI",
+            disabled=not editor_watermark_enabled,
+            key="editor_watermark_text",
+        )
+
+        editor_watermark_opacity = st.slider(
+            "Watermark Opacity",
+            0.10,
+            1.0,
+            0.55,
+            0.05,
+            disabled=not editor_watermark_enabled,
+            key="editor_watermark_opacity",
+        )
+
+    # ========================================================
+    # PREVIEW RENDER BUTTON
+    # ========================================================
+
+    st.markdown("---")
+
+    st.markdown(
+        "### 👀 Edited Preview"
+    )
+
+    preview_col1, preview_col2 = st.columns(
+        2
+    )
+
+    with preview_col1:
+
+        render_preview_button = st.button(
+            "👀 Apply & Preview",
+            type="primary",
+            use_container_width=True,
+            key="editor_render_preview",
+        )
+
+    with preview_col2:
+
+        export_video_button = st.button(
+            "🎬 Export Edited Video",
+            type="primary",
+            use_container_width=True,
+            key="editor_export_video",
+        )
+
+    # ========================================================
+    # RENDER PREVIEW
+    # ========================================================
+
+    if render_preview_button:
+
+        try:
+
+            preview_output = (
+                editor_temp_dir
+                / "editor_preview.mp4"
+            )
+
+            with st.spinner(
+                "🎬 Preview ပြင်ဆင်နေသည်..."
+            ):
+
+                editor_build_preview(
+                    editor_source_path,
+                    preview_output,
+                    preview_time,
+                    editor_ratio,
+                    editor_quality,
+                    editor_flip,
+                    editor_brightness,
+                    editor_contrast,
+                    editor_saturation,
+                    editor_blur,
+                    editor_blur_strength,
+                    editor_caption_enabled,
+                    editor_caption_text,
+                    editor_caption_color,
+                    editor_caption_bg,
+                    editor_caption_bg_opacity,
+                    editor_caption_size,
+                    editor_caption_position,
+                    editor_hook_enabled,
+                    editor_hook_text,
+                    editor_hook_color,
+                    editor_hook_size,
+                    editor_hook_position,
+                    editor_watermark_enabled,
+                    editor_watermark_text,
+                    editor_watermark_opacity,
+                    None,
+                    editor_background,
+                )
+
+            st.session_state.editor_preview_bytes = (
+                preview_output.read_bytes()
+            )
+
+            st.session_state.editor_preview_name = (
+                "editor_preview.mp4"
+            )
+
+            st.success(
+                "✅ Edited Preview ပြီးပါပြီ"
+            )
+
+        except Exception as exc:
+
+            st.error(
+                "Preview ထုတ်ရာမှာ အမှားဖြစ်ပါတယ်။"
+            )
+
+            st.exception(exc)
+
+    # ========================================================
+    # SHOW RENDERED PREVIEW
+    # ========================================================
+
+    if st.session_state.editor_preview_bytes:
+
+        st.video(
+            st.session_state.editor_preview_bytes
+        )
+
+    # ========================================================
+    # FINAL EXPORT
+    # ========================================================
+
+    if export_video_button:
+
+        try:
+
+            export_output = (
+                editor_temp_dir
+                / "myanmar_edited.mp4"
+            )
+
+            with st.spinner(
+                "🎬 Final Edited Video ထုတ်နေသည်..."
+            ):
+
+                editor_export_video(
+                    editor_source_path,
+                    export_output,
+                    editor_ratio,
+                    editor_quality,
+                    editor_flip,
+                    editor_brightness,
+                    editor_contrast,
+                    editor_saturation,
+                    editor_blur,
+                    editor_blur_strength,
+                    editor_caption_enabled,
+                    editor_caption_text,
+                    editor_caption_color,
+                    editor_caption_bg,
+                    editor_caption_bg_opacity,
+                    editor_caption_size,
+                    editor_caption_position,
+                    editor_hook_enabled,
+                    editor_hook_text,
+                    editor_hook_color,
+                    editor_hook_size,
+                    editor_hook_position,
+                    editor_watermark_enabled,
+                    editor_watermark_text,
+                    editor_watermark_opacity,
+                    editor_background,
+                )
+
+            st.session_state.editor_export_bytes = (
+                export_output.read_bytes()
+            )
+
+            st.session_state.editor_export_name = (
+                safe_filename(
+                    Path(
+                        editor_video.name
+                    ).stem
+                    + "_edited.mp4",
+                    "myanmar_edited.mp4",
+                )
+            )
+
+            st.success(
+                "✅ Edited Video ပြီးပါပြီ"
+            )
+
+        except Exception as exc:
+
+            st.error(
+                "Edited Video ထုတ်ရာမှာ "
+                "အမှားဖြစ်ပါတယ်။"
+            )
+
+            st.exception(exc)
+
+    # ========================================================
+    # FINAL VIDEO
+    # ========================================================
+
+    if st.session_state.editor_export_bytes:
+
+        st.markdown(
+            "### 🎬 Final Edited Video"
+        )
+
+        st.video(
+            st.session_state.editor_export_bytes
+        )
+
+        st.download_button(
+            "⬇️ Download Edited Video",
+            data=(
+                st.session_state
+                .editor_export_bytes
+            ),
+            file_name=(
+                st.session_state
+                .editor_export_name
+            ),
+            mime="video/mp4",
+            use_container_width=True,
+            key="download_editor_video",
+        )
+
+else:
+
+    st.info(
+        "🎥 Visual Editor သုံးရန် Video တစ်ခုတင်ပါ။"
+    )
