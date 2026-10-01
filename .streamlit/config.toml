@@ -1,0 +1,6 @@
+[server]
+# Upload cap raised from the 200 MB default. 300 MB is the safe
+# ceiling on Streamlit Community Cloud's free tier (1 GB RAM):
+# uploads are buffered in memory, and the app writes them to disk
+# in chunks (see save_uploaded_file) to avoid doubling RAM use.
+maxUploadSize = 300

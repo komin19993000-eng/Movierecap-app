@@ -3,6 +3,7 @@ import json
 import os
 import random
 import re
+import shutil
 import subprocess
 import tempfile
 import time
@@ -448,6 +449,30 @@ def run_cmd(args, timeout=1800):
         check=False,
         timeout=timeout,
     )
+
+
+def save_uploaded_file(uploaded_file, dest_path):
+    """Write a Streamlit UploadedFile to disk in 1MB chunks.
+
+    Avoids uploaded_file.getbuffer(), which duplicates the whole
+    file in RAM — matters on the 1GB Streamlit Cloud free tier
+    when uploads approach the size limit.
+    """
+
+    dest_path = Path(dest_path)
+
+    uploaded_file.seek(0)
+
+    with open(dest_path, "wb") as out:
+        shutil.copyfileobj(
+            uploaded_file,
+            out,
+            length=1024 * 1024,
+        )
+
+    uploaded_file.seek(0)
+
+    return dest_path
 
 
 def ffprobe_duration(path: Path) -> float:
@@ -3533,8 +3558,9 @@ if make_srt_button:
                 / "audio.wav"
             )
 
-            video_path.write_bytes(
-                video_file.getbuffer()
+            save_uploaded_file(
+                video_file,
+                video_path,
             )
 
             # Optional speed-up BEFORE transcription so that
@@ -3611,8 +3637,14 @@ if make_srt_button:
                 )
             )
 
-            persist_video.write_bytes(
-                video_file.getbuffer()
+            # Persist the PROCESSED video (after optional
+            # speed-up), not the raw upload — the SRT timings
+            # and voiceover slots are timed to this file, so
+            # the Edit step must use the same one.
+
+            shutil.copy(
+                video_path,
+                persist_video,
             )
 
             st.session_state.step1_video_path = str(
@@ -4093,8 +4125,9 @@ with c_ctrl:
             )
         )
 
-        edit_video_path.write_bytes(
-            edit_video_file.getbuffer()
+        save_uploaded_file(
+            edit_video_file,
+            edit_video_path,
         )
 
     voiceover_choice = st.radio(
