@@ -2425,6 +2425,7 @@ def probe_media(
         "duration": 0.0,
         "has_audio": False,
         "has_video": False,
+        "fps": 30.0,
     }
 
     result = run_cmd(
@@ -2465,6 +2466,20 @@ def probe_media(
             video_match.group(2)
         )
         info["has_video"] = True
+
+        fps_match = re.search(
+            r"(\d+(?:\.\d+)?)\s*fps",
+            video_match.group(0),
+        )
+
+        if fps_match:
+
+            try:
+                info["fps"] = float(
+                    fps_match.group(1)
+                )
+            except ValueError:
+                pass
 
     if re.search(
         r"Stream #\d+:\d+[^:]*: Audio:",
@@ -2528,9 +2543,17 @@ def mask_filter_chain(
 
         if mask.get("mode") == "blur":
 
+            # boxblur rejects radius larger than ~half the
+            # frame's smallest plane dimension, so clamp to
+            # the mask region (small strips on small videos
+            # would otherwise crash the render).
+
             radius = max(
                 2,
-                int(blur_radius),
+                min(
+                    int(blur_radius),
+                    min(w, h) // 4,
+                ),
             )
 
             parts.append(
@@ -2570,11 +2593,116 @@ def mask_filter_chain(
     )
 
 
+def transform_filter_chain(
+    start_label: str,
+    flip: bool,
+    zoom_mode: str,
+    zoom_amount: float,
+    eq_preset: str,
+    src_w: int,
+    src_h: int,
+    src_fps: float,
+):
+    """Copyright-evasion transforms: flip -> zoom -> color filter.
+
+    Output frame keeps the source WxH so downstream
+    masks / burned subs / ratio math stays valid.
+    """
+
+    parts = []
+    current = start_label
+
+    if flip:
+
+        parts.append(
+            f"{current}hflip[vflip]"
+        )
+
+        current = "[vflip]"
+
+    if zoom_mode == "static":
+
+        z = max(1.0, float(zoom_amount))
+
+        parts.append(
+            f"{current}"
+            f"scale=iw*{z:.3f}:ih*{z:.3f},"
+            f"crop=iw/{z:.3f}:ih/{z:.3f}"
+            "[vzoom]"
+        )
+
+        current = "[vzoom]"
+
+    elif zoom_mode == "dynamic":
+
+        w = (max(2, int(src_w)) // 2) * 2
+        h = (max(2, int(src_h)) // 2) * 2
+        fps = max(1.0, float(src_fps or 30.0))
+
+        # Slow push-in: 1.00 -> 1.12 over ~60 seconds.
+        # 'in' counts input frames; fps is pinned to the
+        # source so audio/subtitle timing never drifts.
+        parts.append(
+            f"{current}"
+            "zoompan="
+            "z='1.0+0.12*min(in/1800\\,1)':"
+            "d=1:"
+            "x='iw/2-(iw/zoom/2)':"
+            "y='ih/2-(ih/zoom/2)':"
+            f"s={w}x{h}:"
+            f"fps={fps:.2f}"
+            "[vzoom]"
+        )
+
+        current = "[vzoom]"
+
+    eq = {
+        "vivid": (
+            "eq=saturation=1.30:"
+            "contrast=1.06:"
+            "brightness=0.015"
+        ),
+        "warm": (
+            "eq=saturation=1.15:"
+            "contrast=1.03:"
+            "gamma_r=1.05:"
+            "gamma_b=0.95"
+        ),
+        "cool": (
+            "eq=saturation=1.15:"
+            "contrast=1.03:"
+            "gamma_r=0.95:"
+            "gamma_b=1.05"
+        ),
+        "high contrast": (
+            "eq=contrast=1.15:"
+            "saturation=1.10"
+        ),
+    }.get((eq_preset or "none").lower())
+
+    if eq:
+
+        parts.append(
+            f"{current}{eq}[veq]"
+        )
+
+        current = "[veq]"
+
+    if not parts:
+        return "", current
+
+    return (
+        ";".join(parts),
+        current,
+    )
+
+
 def subtitles_filter_arg(
     srt_path: Path,
     font: str,
     size: int,
     position: str,
+    color: str = "bright green",
 ) -> str:
 
     alignment = {
@@ -2589,10 +2717,21 @@ def subtitles_filter_arg(
         "top": 45,
     }.get(position, 45)
 
+    # ASS uses &HAABBGGRR
+    primary = {
+        "bright green": "&H0000FF00",
+        "white": "&H00FFFFFF",
+        "yellow": "&H0000FFFF",
+        "cyan": "&H00FFFF00",
+    }.get(
+        (color or "bright green").lower(),
+        "&H0000FF00",
+    )
+
     style = (
         f"FontName={font},"
         f"FontSize={int(size)},"
-        "PrimaryColour=&H00FFFFFF,"
+        f"PrimaryColour={primary},"
         "OutlineColour=&H80000000,"
         "BorderStyle=1,Outline=2,Shadow=0,"
         f"Alignment={alignment},"
@@ -2673,13 +2812,35 @@ def build_edit_video_filter(
     sub_font,
     sub_size,
     sub_pos,
+    sub_color,
     ratio,
     bg_blur,
+    flip=False,
+    zoom_mode="off",
+    zoom_amount=1.1,
+    eq_preset="none",
+    src_w=0,
+    src_h=0,
+    src_fps=30.0,
 ) -> str:
-    """Full -vf chain: masks -> burned subs -> ratio -> yuv420p."""
+    """Full -vf chain: transforms -> masks -> burned subs -> ratio -> yuv420p."""
 
     filters = []
     current = "[0:v]"
+
+    chain, current = transform_filter_chain(
+        current,
+        flip,
+        zoom_mode,
+        zoom_amount,
+        eq_preset,
+        src_w,
+        src_h,
+        src_fps,
+    )
+
+    if chain:
+        filters.append(chain)
 
     if masks:
 
@@ -2700,6 +2861,7 @@ def build_edit_video_filter(
                 sub_font,
                 sub_size,
                 sub_pos,
+                sub_color,
             )
             + "[vsub]"
         )
@@ -2721,6 +2883,171 @@ def build_edit_video_filter(
     return ";".join(filters)
 
 
+def make_title_card(
+    text: str,
+    duration: float,
+    width: int,
+    height: int,
+    font: str,
+    out_path: Path,
+) -> Path:
+    """Black title card (intro/outro) with centered text via libass.
+
+    `text` comes straight from the user's UI input (their bytes),
+    never retyped — Myanmar shaping stays intact.
+    """
+
+    dur = max(0.5, float(duration))
+    w = (max(2, int(width)) // 2) * 2
+    h = (max(2, int(height)) // 2) * 2
+
+    safe = (text or "").replace("\\", "\\\\")
+
+    ass = (
+        "[Script Info]\n"
+        "ScriptType: v4.00+\n"
+        "PlayResX: 1080\n"
+        "PlayResY: 1080\n"
+        "[V4+ Styles]\n"
+        "Format: Name, Fontname, Fontsize, PrimaryColour, "
+        "SecondaryColour, OutlineColour, BackColour, Bold, "
+        "Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, "
+        "Angle, BorderStyle, Outline, Shadow, Alignment, "
+        "MarginL, MarginR, MarginV, Encoding\n"
+        f"Style: Card,{font},64,&H0000FF00,&H000000FF,"
+        "&H80000000,&H80000000,0,0,0,0,100,100,0,0,1,3,0,"
+        "5,10,10,40,1\n"
+        "[Events]\n"
+        "Format: Layer, Start, End, Style, Name, MarginL, "
+        "MarginR, MarginV, Effect, Text\n"
+        "Dialogue: 0,0:00:00.00,9:59:59.99,Card,,0,0,0,,"
+        f"{safe}\n"
+    )
+
+    ass_path = out_path.with_suffix(".ass")
+    ass_path.write_text(ass, encoding="utf-8")
+
+    vf = []
+
+    if safe.strip():
+        vf.append(f"subtitles='{ass_path}'")
+
+    vf.append("format=yuv420p")
+
+    result = run_cmd(
+        [
+            FFMPEG,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "lavfi",
+            "-i",
+            (
+                f"color=c=black:s={w}x{h}:"
+                f"r=30:d={dur:.2f}"
+            ),
+            "-f",
+            "lavfi",
+            "-i",
+            (
+                "anullsrc=r=48000:cl=stereo"
+                f":d={dur:.2f}"
+            ),
+            "-vf",
+            ",".join(vf),
+            "-c:v",
+            "libx264",
+            "-preset",
+            "veryfast",
+            "-crf",
+            "20",
+            "-c:a",
+            "aac",
+            "-shortest",
+            str(out_path),
+        ],
+        timeout=600,
+    )
+
+    if (
+        result.returncode != 0
+        or not out_path.exists()
+    ):
+
+        raise RuntimeError(
+            "Title card failed.\n"
+            + (result.stderr or "")[-1000:]
+        )
+
+    return out_path
+
+
+def split_video_parts(
+    video_path: Path,
+    part_len: float,
+    base_name: str,
+) -> list:
+    """Split into ~part_len second chunks (stream copy)."""
+
+    stem = Path(base_name).stem or "video"
+
+    pattern = (
+        EDIT_WORK_DIR
+        / f"{stem}_part%02d.mp4"
+    )
+
+    # Clear stale parts from a previous run.
+    for old in EDIT_WORK_DIR.glob(
+        f"{stem}_part*.mp4"
+    ):
+        old.unlink(missing_ok=True)
+
+    result = run_cmd(
+        [
+            FFMPEG,
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-i",
+            str(video_path),
+            "-c",
+            "copy",
+            "-map",
+            "0",
+            "-f",
+            "segment",
+            "-segment_time",
+            f"{float(part_len):.1f}",
+            "-reset_timestamps",
+            "1",
+            str(pattern),
+        ],
+        timeout=1200,
+    )
+
+    if result.returncode != 0:
+
+        raise RuntimeError(
+            "Split failed.\n"
+            + (result.stderr or "")[-1000:]
+        )
+
+    parts = sorted(
+        EDIT_WORK_DIR.glob(
+            f"{stem}_part*.mp4"
+        )
+    )
+
+    return [
+        p
+        for p in parts
+        if p.stat().st_size > 5000
+    ]
+
+
 def render_edited_video(
     video_path: Path,
     voice_path,
@@ -2733,9 +3060,19 @@ def render_edited_video(
     sub_font: str,
     sub_size: int,
     sub_pos: str,
+    sub_color: str,
     ratio: str,
     bg_blur: int,
     out_name: str,
+    flip: bool = False,
+    zoom_mode: str = "off",
+    zoom_amount: float = 1.1,
+    eq_preset: str = "none",
+    bgm_path=None,
+    bgm_volume: float = 0.15,
+    intro_text: str = "",
+    outro_text: str = "",
+    card_duration: float = 2.0,
 ) -> Path:
 
     info = probe_media(video_path)
@@ -2745,6 +3082,10 @@ def render_edited_video(
             "No video stream found in the file."
         )
 
+    want_intro = bool((intro_text or "").strip())
+    want_outro = bool((outro_text or "").strip())
+    want_cards = want_intro or want_outro
+
     video_filter = build_edit_video_filter(
         masks,
         mask_blur,
@@ -2753,8 +3094,16 @@ def render_edited_video(
         sub_font,
         sub_size,
         sub_pos,
+        sub_color,
         ratio,
         bg_blur,
+        flip=flip,
+        zoom_mode=zoom_mode,
+        zoom_amount=zoom_amount,
+        eq_preset=eq_preset,
+        src_w=info["width"],
+        src_h=info["height"],
+        src_fps=info.get("fps", 30.0),
     )
 
     command = [
@@ -2781,8 +3130,26 @@ def render_edited_video(
             str(voice_path),
         ]
 
+    bgm_index = None
+
+    if (
+        bgm_path is not None
+        and Path(bgm_path).exists()
+    ):
+
+        bgm_index = (
+            2
+            if voice_index is not None
+            else 1
+        )
+
+        command += [
+            "-i",
+            str(bgm_path),
+        ]
+
     filter_parts = [video_filter]
-    audio_map = []
+    base_audio = None
 
     if voice_index is not None:
 
@@ -2799,20 +3166,18 @@ def render_edited_video(
                 "[a0][a1]amix=inputs=2:"
                 "duration=longest:"
                 "dropout_transition=0"
-                "[aout]"
+                "[abase]"
             )
-
-            audio_map = [
-                "-map",
-                "[aout]",
-            ]
 
         else:
 
-            audio_map = [
-                "-map",
-                f"{voice_index}:a",
-            ]
+            filter_parts.append(
+                f"[{voice_index}:a]"
+                "aresample=48000"
+                "[abase]"
+            )
+
+        base_audio = "[abase]"
 
     elif (
         keep_original
@@ -2820,19 +3185,87 @@ def render_edited_video(
     ):
 
         filter_parts.append(
-            f"[0:a]volume={orig_volume:.3f}[aout]"
+            f"[0:a]volume={orig_volume:.3f}"
+            "[abase]"
         )
+
+        base_audio = "[abase]"
+
+    if bgm_index is not None:
+
+        bv = max(0.0, min(1.0, float(bgm_volume)))
+
+        if base_audio is not None:
+
+            filter_parts.append(
+                f"[{bgm_index}:a]"
+                f"volume={bv:.3f},"
+                "aresample=48000,"
+                "apad"
+                "[abgm];"
+                f"{base_audio}[abgm]"
+                "amix=inputs=2:"
+                "duration=first:"
+                "dropout_transition=0"
+                "[afinal]"
+            )
+
+        else:
+
+            filter_parts.append(
+                f"[{bgm_index}:a]"
+                f"volume={bv:.3f},"
+                "aresample=48000"
+                "[afinal]"
+            )
 
         audio_map = [
             "-map",
-            "[aout]",
+            "[afinal]",
+        ]
+
+    elif base_audio is not None:
+
+        audio_map = [
+            "-map",
+            base_audio,
         ]
 
     else:
 
         audio_map = ["-an"]
 
-    output = EDIT_WORK_DIR / out_name
+    # Intro/outro concat needs an audio stream on every
+    # segment, so force a silent track when the main
+    # video would otherwise have none.
+
+    if want_cards and audio_map == ["-an"]:
+
+        silent_index = (
+            1
+            + (1 if voice_index is not None else 0)
+            + (1 if bgm_index is not None else 0)
+        )
+
+        command += [
+            "-f",
+            "lavfi",
+            "-i",
+            "anullsrc=r=48000:cl=stereo",
+        ]
+
+        audio_map = [
+            "-map",
+            f"{silent_index}:a",
+        ]
+
+    main_name = (
+        ("main_" + out_name)
+        if want_cards
+        else out_name
+    )
+
+    output = EDIT_WORK_DIR / main_name
 
     command += [
         "-filter_complex",
@@ -2876,7 +3309,104 @@ def render_edited_video(
             + (result.stderr or "")[-2000:]
         )
 
-    return output
+    if not want_cards:
+        return output
+
+    main_info = probe_media(output)
+
+    card_paths = []
+
+    if want_intro:
+
+        card_paths.append(
+            make_title_card(
+                intro_text,
+                card_duration,
+                main_info["width"] or 1080,
+                main_info["height"] or 1920,
+                sub_font,
+                EDIT_WORK_DIR / "intro_card.mp4",
+            )
+        )
+
+    card_paths.append(output)
+
+    if want_outro:
+
+        card_paths.append(
+            make_title_card(
+                outro_text,
+                card_duration,
+                main_info["width"] or 1080,
+                main_info["height"] or 1920,
+                sub_font,
+                EDIT_WORK_DIR / "outro_card.mp4",
+            )
+        )
+
+    concat_cmd = [FFMPEG, "-y", "-hide_banner", "-loglevel", "error"]
+
+    for seg in card_paths:
+        concat_cmd += ["-i", str(seg)]
+
+    n = len(card_paths)
+
+    # concat expects each segment's streams grouped:
+    # [0:v][0:a][1:v][1:a]...
+    seg_in = "".join(
+        f"[{i}:v][{i}:a]"
+        for i in range(n)
+    )
+
+    concat_cmd += [
+        "-filter_complex",
+        (
+            f"{seg_in}"
+            f"concat=n={n}:v=1:a=1"
+            "[vcat][acat]"
+        ),
+        "-map",
+        "[vcat]",
+        "-map",
+        "[acat]",
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-movflags",
+        "+faststart",
+        str(EDIT_WORK_DIR / out_name),
+    ]
+
+    concat_result = run_cmd(
+        concat_cmd,
+        timeout=3600,
+    )
+
+    final = EDIT_WORK_DIR / out_name
+
+    if (
+        concat_result.returncode != 0
+        or not final.exists()
+        or final.stat().st_size < 5000
+    ):
+
+        raise RuntimeError(
+            "Intro/outro concat failed.\n"
+            + (concat_result.stderr or "")[-2000:]
+        )
+
+    return final
 
 
 # ============================================================
@@ -2953,6 +3483,21 @@ with st.form(
         index=0,
     )
 
+    speed_factor = st.slider(
+        "⚡ Video speed (applied BEFORE transcription — "
+        "SRT + voiceover stay in sync)",
+        1.00,
+        1.15,
+        1.10,
+        0.05,
+        help=(
+            "Slight speed-up helps avoid copyright "
+            "detection. Applied to the video first, "
+            "so transcription, SRT and voiceover "
+            "are all timed to the sped-up video."
+        ),
+    )
+
     make_srt_button = (
         st.form_submit_button(
             "📝 မြန်မာ SRT ထုတ်မယ်",
@@ -2991,6 +3536,64 @@ if make_srt_button:
             video_path.write_bytes(
                 video_file.getbuffer()
             )
+
+            # Optional speed-up BEFORE transcription so that
+            # SRT timestamps + voiceover slots are all timed
+            # to the sped-up video (nothing goes out of sync).
+
+            if speed_factor > 1.001:
+
+                sped_path = (
+                    work
+                    / "input_video_sped.mp4"
+                )
+
+                speed_result = run_cmd(
+                    [
+                        FFMPEG,
+                        "-y",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-i",
+                        str(video_path),
+                        "-vf",
+                        (
+                            "setpts="
+                            f"PTS/{speed_factor:.3f}"
+                        ),
+                        "-af",
+                        (
+                            "atempo="
+                            f"{speed_factor:.3f}"
+                        ),
+                        "-c:v",
+                        "libx264",
+                        "-preset",
+                        "veryfast",
+                        "-crf",
+                        "20",
+                        "-c:a",
+                        "aac",
+                        str(sped_path),
+                    ],
+                    timeout=1800,
+                )
+
+                if (
+                    speed_result.returncode != 0
+                    or not sped_path.exists()
+                ):
+
+                    raise RuntimeError(
+                        "Speed-up failed.\n"
+                        + (
+                            speed_result.stderr
+                            or ""
+                        )[-1000:]
+                    )
+
+                video_path = sped_path
 
             # Keep a persistent copy for the Edit step
             # (the temp dir above is deleted afterwards).
@@ -3619,8 +4222,21 @@ with c_ctrl:
     burn_subs = False
     sub_size = 28
     sub_position = "bottom"
+    sub_color = "Bright green"
     out_ratio = "Original"
     bg_blur = 0
+    flip_enabled = True
+    zoom_choice = "Static zoom"
+    zoom_amount = 1.10
+    eq_choice = "Vivid"
+    bgm_enabled = False
+    edit_bgm_path = None
+    bgm_volume = 0.15
+    intro_text = ""
+    outro_text = ""
+    card_duration = 2.0
+    split_enabled = True
+    split_part_len = 120.0
 
     if (
         edit_video_path is not None
@@ -3784,6 +4400,49 @@ with c_ctrl:
                 }
             ]
 
+        st.subheader(
+            "Copyright-safe transforms"
+        )
+
+        flip_enabled = st.checkbox(
+            "Flip video horizontally",
+            value=True,
+        )
+
+        zoom_choice = st.selectbox(
+            "Zoom",
+            [
+                "Off",
+                "Static zoom",
+                "Slow push-in (dynamic)",
+            ],
+            index=1,
+        )
+
+        zoom_amount = 1.10
+
+        if zoom_choice == "Static zoom":
+
+            zoom_amount = st.slider(
+                "Zoom amount",
+                1.00,
+                1.30,
+                1.10,
+                0.05,
+            )
+
+        eq_choice = st.selectbox(
+            "Color filter",
+            [
+                "None",
+                "Vivid",
+                "Warm",
+                "Cool",
+                "High contrast",
+            ],
+            index=1,
+        )
+
         st.subheader("Subtitles")
 
         sub_font = find_myanmar_font()
@@ -3820,6 +4479,17 @@ with c_ctrl:
             ],
         )
 
+        sub_color = st.selectbox(
+            "Subtitle color",
+            [
+                "Bright green",
+                "White",
+                "Yellow",
+                "Cyan",
+            ],
+            index=0,
+        )
+
         st.subheader("Aspect ratio")
 
         out_ratio = st.selectbox(
@@ -3844,6 +4514,105 @@ with c_ctrl:
                     6,
                 )
                 * 5
+            )
+
+        st.subheader("Background music")
+
+        bgm_enabled = st.checkbox(
+            "Add background music under the voiceover",
+            value=False,
+        )
+
+        edit_bgm_path = None
+        bgm_volume = 0.15
+
+        if bgm_enabled:
+
+            bgm_upload = st.file_uploader(
+                "Music file",
+                type=[
+                    "mp3",
+                    "wav",
+                    "m4a",
+                    "aac",
+                ],
+                key="edit_bgm",
+            )
+
+            if bgm_upload:
+
+                edit_bgm_path = (
+                    EDIT_WORK_DIR
+                    / (
+                        "edit_bgm"
+                        + (
+                            Path(
+                                bgm_upload.name
+                            ).suffix
+                            or ".mp3"
+                        )
+                    )
+                )
+
+                edit_bgm_path.write_bytes(
+                    bgm_upload.getbuffer()
+                )
+
+            bgm_volume = (
+                st.slider(
+                    "Music volume",
+                    5,
+                    30,
+                    15,
+                )
+                / 100.0
+            )
+
+        st.subheader("Intro / outro cards")
+
+        st.caption(
+            "Leave empty to skip. Text is centered on "
+            "a black card with a bright-green title."
+        )
+
+        intro_text = st.text_input(
+            "Intro card text",
+            value="",
+        )
+
+        outro_text = st.text_input(
+            "Outro card text",
+            value="",
+        )
+
+        card_duration = float(
+            st.slider(
+                "Card duration (seconds)",
+                1,
+                5,
+                2,
+            )
+        )
+
+        st.subheader("Auto-split")
+
+        split_enabled = st.checkbox(
+            "Split long videos into parts",
+            value=True,
+        )
+
+        split_part_len = 120.0
+
+        if split_enabled:
+
+            split_part_len = float(
+                st.slider(
+                    "Part length (seconds)",
+                    60,
+                    300,
+                    120,
+                    10,
+                )
             )
 
 
@@ -3879,8 +4648,28 @@ with c_prev:
                     sub_font,
                     sub_size,
                     sub_position,
+                    sub_color,
                     out_ratio,
                     bg_blur,
+                    flip=flip_enabled,
+                    zoom_mode=(
+                        "static"
+                        if zoom_choice
+                        == "Static zoom"
+                        else (
+                            "dynamic"
+                            if zoom_choice
+                            == "Slow push-in (dynamic)"
+                            else "off"
+                        )
+                    ),
+                    zoom_amount=zoom_amount,
+                    eq_preset=eq_choice,
+                    src_w=media_info["width"],
+                    src_h=media_info["height"],
+                    src_fps=media_info.get(
+                        "fps", 30.0
+                    ),
                 )
             )
 
@@ -4056,27 +4845,121 @@ with c_prev:
                         sub_pos=(
                             sub_position
                         ),
+                        sub_color=sub_color,
                         ratio=out_ratio,
                         bg_blur=bg_blur,
                         out_name=file_name,
+                        flip=flip_enabled,
+                        zoom_mode=(
+                            "static"
+                            if zoom_choice
+                            == "Static zoom"
+                            else (
+                                "dynamic"
+                                if zoom_choice
+                                == (
+                                    "Slow push-in "
+                                    "(dynamic)"
+                                )
+                                else "off"
+                            )
+                        ),
+                        zoom_amount=zoom_amount,
+                        eq_preset=eq_choice,
+                        bgm_path=(
+                            edit_bgm_path
+                            if bgm_enabled
+                            else None
+                        ),
+                        bgm_volume=bgm_volume,
+                        intro_text=intro_text,
+                        outro_text=outro_text,
+                        card_duration=(
+                            card_duration
+                        ),
                     )
                 )
 
-            st.video(
-                str(final_path)
+            final_info = probe_media(
+                final_path
             )
 
-            st.download_button(
-                "Download final video",
-                data=(
-                    final_path.read_bytes()
-                ),
-                file_name=(
-                    final_path.name
-                ),
-                mime="video/mp4",
-                use_container_width=True,
+            do_split = (
+                split_enabled
+                and final_info["duration"]
+                > split_part_len
             )
+
+            if do_split:
+
+                with st.spinner(
+                    "Splitting into parts..."
+                ):
+
+                    parts = split_video_parts(
+                        final_path,
+                        split_part_len,
+                        file_name,
+                    )
+
+                if not parts:
+
+                    st.warning(
+                        "Split produced no parts — "
+                        "showing the full video."
+                    )
+
+                    do_split = False
+
+            if do_split:
+
+                st.success(
+                    f"Done — {len(parts)} parts."
+                )
+
+                for idx, part in enumerate(
+                    parts
+                ):
+                    st.markdown(
+                        f"**အပိုင်း {idx + 1}**"
+                    )
+
+                    st.video(
+                        str(part)
+                    )
+
+                    st.download_button(
+                        f"Download part {idx + 1}",
+                        data=(
+                            part.read_bytes()
+                        ),
+                        file_name=(
+                            part.name
+                        ),
+                        mime="video/mp4",
+                        use_container_width=True,
+                        key=(
+                            f"dl_part_{idx}"
+                        ),
+                    )
+
+            else:
+
+                st.video(
+                    str(final_path)
+                )
+
+                st.download_button(
+                    "Download final video",
+                    data=(
+                        final_path.read_bytes()
+                    ),
+                    file_name=(
+                        final_path.name
+                    ),
+                    mime="video/mp4",
+                    use_container_width=True,
+                )
 
         except Exception as exc:
 
