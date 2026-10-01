@@ -3439,419 +3439,433 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-edit_video_file = st.file_uploader(
-    "Video file",
-    type=[
-        "mp4",
-        "mov",
-        "mkv",
-        "webm",
-    ],
-    key="edit_video",
-)
+c_prev, c_ctrl = st.columns([1, 1.15])
 
-use_step1_video = False
-
-if (
-    st.session_state.step1_video_path
-    and Path(
-        st.session_state.step1_video_path
-    ).exists()
-):
-
-    use_step1_video = st.checkbox(
-        "Use the video from Step 1",
-        value=True,
-    )
-
-edit_video_path = None
-
-if use_step1_video:
-
-    edit_video_path = Path(
-        st.session_state.step1_video_path
-    )
-
-elif edit_video_file:
-
-    edit_video_path = (
-        EDIT_WORK_DIR
-        / (
-            "edit_video"
-            + (
-                Path(
-                    edit_video_file.name
-                ).suffix
-                or ".mp4"
-            )
-        )
-    )
-
-    edit_video_path.write_bytes(
-        edit_video_file.getbuffer()
-    )
-
-voiceover_choice = st.radio(
-    "Voiceover track",
-    [
-        "Use Step 2 voiceover",
-        "Upload audio file",
-        "None",
-    ],
-    horizontal=True,
-)
-
-edit_voice_path = None
-
-if voiceover_choice == "Use Step 2 voiceover":
-
-    if st.session_state.voice_bytes:
-
-        edit_voice_path = (
-            EDIT_WORK_DIR
-            / "edit_voiceover.m4a"
-        )
-
-        edit_voice_path.write_bytes(
-            st.session_state.voice_bytes
-        )
-
-    else:
-
-        st.info(
-            "No Step 2 voiceover yet — "
-            "generate one above or upload a file."
-        )
-
-elif voiceover_choice == "Upload audio file":
-
-    voiceover_upload = st.file_uploader(
-        "Voiceover audio",
+with c_ctrl:
+    edit_video_file = st.file_uploader(
+        "Video file",
         type=[
-            "m4a",
-            "mp3",
-            "wav",
-            "aac",
+            "mp4",
+            "mov",
+            "mkv",
+            "webm",
         ],
-        key="edit_voiceover",
+        key="edit_video",
     )
 
-    if voiceover_upload:
+    use_step1_video = False
 
-        edit_voice_path = (
+    if (
+        st.session_state.step1_video_path
+        and Path(
+            st.session_state.step1_video_path
+        ).exists()
+    ):
+
+        use_step1_video = st.checkbox(
+            "Use the video from Step 1",
+            value=True,
+        )
+
+    edit_video_path = None
+
+    if use_step1_video:
+
+        edit_video_path = Path(
+            st.session_state.step1_video_path
+        )
+
+    elif edit_video_file:
+
+        edit_video_path = (
             EDIT_WORK_DIR
             / (
-                "edit_voiceover_up"
+                "edit_video"
                 + (
                     Path(
-                        voiceover_upload.name
+                        edit_video_file.name
                     ).suffix
-                    or ".m4a"
+                    or ".mp4"
                 )
             )
         )
 
-        edit_voice_path.write_bytes(
-            voiceover_upload.getbuffer()
+        edit_video_path.write_bytes(
+            edit_video_file.getbuffer()
         )
 
-srt_choice = st.radio(
-    "Subtitle source",
-    [
-        "Use Step 1 SRT",
-        "Upload SRT file",
-        "None",
-    ],
-    horizontal=True,
-)
-
-edit_srt_path = None
-edit_srt_available = False
-
-if srt_choice == "Use Step 1 SRT":
-
-    if st.session_state.srt_text:
-
-        edit_srt_path = (
-            EDIT_WORK_DIR
-            / "edit_subs.srt"
-        )
-
-        edit_srt_path.write_text(
-            st.session_state.srt_text,
-            encoding="utf-8-sig",
-        )
-
-        edit_srt_available = True
-
-    else:
-
-        st.info("No Step 1 SRT yet.")
-
-elif srt_choice == "Upload SRT file":
-
-    srt_upload = st.file_uploader(
-        "SRT file",
-        type=["srt"],
-        key="edit_srt",
-    )
-
-    if srt_upload:
-
-        edit_srt_path = (
-            EDIT_WORK_DIR
-            / "edit_subs_up.srt"
-        )
-
-        edit_srt_path.write_bytes(
-            srt_upload.getvalue()
-        )
-
-        edit_srt_available = True
-
-if (
-    edit_video_path is not None
-    and edit_video_path.exists()
-):
-
-    media_info = probe_media(
-        edit_video_path
-    )
-
-    if not media_info["has_video"]:
-
-        st.error(
-            "No video stream found in the file."
-        )
-
-        st.stop()
-
-    st.caption(
-        f"{media_info['width']}x{media_info['height']} | "
-        f"{media_info['duration']:.1f}s | "
-        f"{'has audio' if media_info['has_audio'] else 'no audio'}"
-    )
-
-    st.subheader("Audio")
-
-    original_choice = st.radio(
-        "Original video audio",
+    voiceover_choice = st.radio(
+        "Voiceover track",
         [
-            "Mute original audio",
-            "Keep original audio",
+            "Use Step 2 voiceover",
+            "Upload audio file",
+            "None",
         ],
         horizontal=True,
     )
 
-    original_volume = 0.0
+    edit_voice_path = None
 
-    if (
-        original_choice
-        == "Keep original audio"
-        and media_info["has_audio"]
-    ):
+    if voiceover_choice == "Use Step 2 voiceover":
 
-        original_volume = (
-            st.slider(
-                "Original audio volume",
-                0,
-                100,
-                40,
-            )
-            / 100.0
-        )
+        if st.session_state.voice_bytes:
 
-    st.subheader(
-        "Mask hardcoded subtitles"
-    )
-
-    mask_enabled = st.checkbox(
-        "Cover burned-in subtitles with a mask",
-        value=False,
-    )
-
-    edit_masks = []
-    edit_mask_blur = 25
-
-    if mask_enabled:
-
-        mask_preset = st.selectbox(
-            "Mask area",
-            [
-                "Bottom strip",
-                "Top strip",
-                "Custom",
-            ],
-        )
-
-        src_w = media_info["width"]
-        src_h = media_info["height"]
-
-        if mask_preset == "Bottom strip":
-
-            mx, my = 0, int(
-                src_h * 0.78
-            )
-            mw, mh = src_w, int(
-                src_h * 0.22
+            edit_voice_path = (
+                EDIT_WORK_DIR
+                / "edit_voiceover.m4a"
             )
 
-        elif mask_preset == "Top strip":
-
-            mx, my = 0, 0
-            mw, mh = src_w, int(
-                src_h * 0.15
+            edit_voice_path.write_bytes(
+                st.session_state.voice_bytes
             )
 
         else:
 
-            cx = st.slider(
-                "Mask X (%)",
-                0,
-                100,
-                0,
-            )
-            cy = st.slider(
-                "Mask Y (%)",
-                0,
-                100,
-                78,
-            )
-            cw = st.slider(
-                "Mask width (%)",
-                1,
-                100,
-                100,
-            )
-            ch = st.slider(
-                "Mask height (%)",
-                1,
-                100,
-                22,
+            st.info(
+                "No Step 2 voiceover yet — "
+                "generate one above or upload a file."
             )
 
-            mx = int(src_w * cx / 100)
-            my = int(src_h * cy / 100)
-            mw = int(src_w * cw / 100)
-            mh = int(src_h * ch / 100)
+    elif voiceover_choice == "Upload audio file":
 
-        mask_style = st.radio(
-            "Mask style",
+        voiceover_upload = st.file_uploader(
+            "Voiceover audio",
+            type=[
+                "m4a",
+                "mp3",
+                "wav",
+                "aac",
+            ],
+            key="edit_voiceover",
+        )
+
+        if voiceover_upload:
+
+            edit_voice_path = (
+                EDIT_WORK_DIR
+                / (
+                    "edit_voiceover_up"
+                    + (
+                        Path(
+                            voiceover_upload.name
+                        ).suffix
+                        or ".m4a"
+                    )
+                )
+            )
+
+            edit_voice_path.write_bytes(
+                voiceover_upload.getbuffer()
+            )
+
+    srt_choice = st.radio(
+        "Subtitle source",
+        [
+            "Use Step 1 SRT",
+            "Upload SRT file",
+            "None",
+        ],
+        horizontal=True,
+    )
+
+    edit_srt_path = None
+    edit_srt_available = False
+
+    if srt_choice == "Use Step 1 SRT":
+
+        if st.session_state.srt_text:
+
+            edit_srt_path = (
+                EDIT_WORK_DIR
+                / "edit_subs.srt"
+            )
+
+            edit_srt_path.write_text(
+                st.session_state.srt_text,
+                encoding="utf-8-sig",
+            )
+
+            edit_srt_available = True
+
+        else:
+
+            st.info("No Step 1 SRT yet.")
+
+    elif srt_choice == "Upload SRT file":
+
+        srt_upload = st.file_uploader(
+            "SRT file",
+            type=["srt"],
+            key="edit_srt",
+        )
+
+        if srt_upload:
+
+            edit_srt_path = (
+                EDIT_WORK_DIR
+                / "edit_subs_up.srt"
+            )
+
+            edit_srt_path.write_bytes(
+                srt_upload.getvalue()
+            )
+
+            edit_srt_available = True
+
+    media_info = None
+    edit_masks = []
+    edit_mask_blur = 25
+    sub_font = "sans-serif"
+    burn_subs = False
+    sub_size = 28
+    sub_position = "bottom"
+    out_ratio = "Original"
+    bg_blur = 0
+
+    if (
+        edit_video_path is not None
+        and edit_video_path.exists()
+    ):
+
+        media_info = probe_media(
+            edit_video_path
+        )
+
+        if not media_info["has_video"]:
+
+            st.error(
+                "No video stream found in the file."
+            )
+
+            st.stop()
+
+        st.caption(
+            f"{media_info['width']}x{media_info['height']} | "
+            f"{media_info['duration']:.1f}s | "
+            f"{'has audio' if media_info['has_audio'] else 'no audio'}"
+        )
+
+        st.subheader("Audio")
+
+        original_choice = st.radio(
+            "Original video audio",
             [
-                "Blur",
-                "Black box",
+                "Mute original audio",
+                "Keep original audio",
             ],
             horizontal=True,
         )
 
-        if mask_style == "Blur":
+        original_volume = 0.0
 
-            edit_mask_blur = (
+        if (
+            original_choice
+            == "Keep original audio"
+            and media_info["has_audio"]
+        ):
+
+            original_volume = (
                 st.slider(
-                    "Mask blur strength",
+                    "Original audio volume",
+                    0,
+                    100,
+                    40,
+                )
+                / 100.0
+            )
+
+        st.subheader(
+            "Mask hardcoded subtitles"
+        )
+
+        mask_enabled = st.checkbox(
+            "Cover burned-in subtitles with a mask",
+            value=False,
+        )
+
+        edit_masks = []
+        edit_mask_blur = 25
+
+        if mask_enabled:
+
+            mask_preset = st.selectbox(
+                "Mask area",
+                [
+                    "Bottom strip",
+                    "Top strip",
+                    "Custom",
+                ],
+            )
+
+            src_w = media_info["width"]
+            src_h = media_info["height"]
+
+            if mask_preset == "Bottom strip":
+
+                mx, my = 0, int(
+                    src_h * 0.78
+                )
+                mw, mh = src_w, int(
+                    src_h * 0.22
+                )
+
+            elif mask_preset == "Top strip":
+
+                mx, my = 0, 0
+                mw, mh = src_w, int(
+                    src_h * 0.15
+                )
+
+            else:
+
+                cx = st.slider(
+                    "Mask X (%)",
+                    0,
+                    100,
+                    0,
+                )
+                cy = st.slider(
+                    "Mask Y (%)",
+                    0,
+                    100,
+                    78,
+                )
+                cw = st.slider(
+                    "Mask width (%)",
+                    1,
+                    100,
+                    100,
+                )
+                ch = st.slider(
+                    "Mask height (%)",
+                    1,
+                    100,
+                    22,
+                )
+
+                mx = int(src_w * cx / 100)
+                my = int(src_h * cy / 100)
+                mw = int(src_w * cw / 100)
+                mh = int(src_h * ch / 100)
+
+            mask_style = st.radio(
+                "Mask style",
+                [
+                    "Blur",
+                    "Black box",
+                ],
+                horizontal=True,
+            )
+
+            if mask_style == "Blur":
+
+                edit_mask_blur = (
+                    st.slider(
+                        "Mask blur strength",
+                        1,
+                        10,
+                        5,
+                    )
+                    * 5
+                )
+
+            edit_masks = [
+                {
+                    "x": mx,
+                    "y": my,
+                    "w": mw,
+                    "h": mh,
+                    "mode": (
+                        "blur"
+                        if mask_style
+                        == "Blur"
+                        else "black"
+                    ),
+                }
+            ]
+
+        st.subheader("Subtitles")
+
+        sub_font = find_myanmar_font()
+
+        if not sub_font:
+
+            st.warning(
+                "No Myanmar font found on this server — "
+                "burned subtitles may show as boxes. "
+                "Install a Myanmar font (e.g. Noto Sans Myanmar) "
+                "to fix it."
+            )
+
+            sub_font = "sans-serif"
+
+        burn_subs = st.checkbox(
+            "Burn subtitles into the video",
+            value=edit_srt_available,
+        )
+
+        sub_size = st.slider(
+            "Subtitle size",
+            12,
+            64,
+            28,
+        )
+
+        sub_position = st.selectbox(
+            "Subtitle position",
+            [
+                "bottom",
+                "middle",
+                "top",
+            ],
+        )
+
+        st.subheader("Aspect ratio")
+
+        out_ratio = st.selectbox(
+            "Output ratio",
+            [
+                "Original",
+                "9:16 vertical (blur background)",
+                "9:16 vertical (crop)",
+                "1:1 square (blur background)",
+            ],
+        )
+
+        bg_blur = 0
+
+        if "blur background" in out_ratio:
+
+            bg_blur = (
+                st.slider(
+                    "Background blur strength",
                     1,
                     10,
-                    5,
+                    6,
                 )
                 * 5
             )
 
-        edit_masks = [
-            {
-                "x": mx,
-                "y": my,
-                "w": mw,
-                "h": mh,
-                "mode": (
-                    "blur"
-                    if mask_style
-                    == "Blur"
-                    else "black"
-                ),
-            }
-        ]
 
-    st.subheader("Subtitles")
+with c_prev:
 
-    sub_font = find_myanmar_font()
+    st.subheader("Live preview")
 
-    if not sub_font:
+    if media_info:
 
-        st.warning(
-            "No Myanmar font found on this server — "
-            "burned subtitles may show as boxes. "
-            "Install a Myanmar font (e.g. Noto Sans Myanmar) "
-            "to fix it."
+        preview_time = st.slider(
+            "Timestamp (seconds)",
+            0.0,
+            max(
+                1.0,
+                media_info["duration"],
+            ),
+            min(
+                30.0,
+                media_info["duration"] * 0.3,
+            ),
+            key="edit_preview_time",
         )
-
-        sub_font = "sans-serif"
-
-    burn_subs = st.checkbox(
-        "Burn subtitles into the video",
-        value=edit_srt_available,
-    )
-
-    sub_size = st.slider(
-        "Subtitle size",
-        12,
-        64,
-        28,
-    )
-
-    sub_position = st.selectbox(
-        "Subtitle position",
-        [
-            "bottom",
-            "middle",
-            "top",
-        ],
-    )
-
-    st.subheader("Aspect ratio")
-
-    out_ratio = st.selectbox(
-        "Output ratio",
-        [
-            "Original",
-            "9:16 vertical (blur background)",
-            "9:16 vertical (crop)",
-            "1:1 square (blur background)",
-        ],
-    )
-
-    bg_blur = 0
-
-    if "blur background" in out_ratio:
-
-        bg_blur = (
-            st.slider(
-                "Background blur strength",
-                1,
-                10,
-                6,
-            )
-            * 5
-        )
-
-    preview_time = st.slider(
-        "Preview timestamp (seconds)",
-        0.0,
-        max(
-            1.0,
-            media_info["duration"],
-        ),
-        min(
-            30.0,
-            media_info["duration"] * 0.3,
-        ),
-    )
-
-    preview_button = st.button(
-        "Preview frame",
-        use_container_width=True,
-    )
-
-    if preview_button:
 
         try:
 
@@ -3870,53 +3884,98 @@ if (
                 )
             )
 
+            try:
+
+                video_stat = (
+                    edit_video_path.stat()
+                )
+
+                cache_key = "|".join(
+                    [
+                        preview_filter,
+                        f"{preview_time:.2f}",
+                        str(video_stat.st_size),
+                        str(
+                            int(
+                                video_stat.st_mtime
+                            )
+                        ),
+                    ]
+                )
+
+            except OSError:
+
+                cache_key = None
+
             preview_path = (
                 EDIT_WORK_DIR
                 / "preview.jpg"
             )
 
-            preview_result = run_cmd(
-                [
-                    FFMPEG,
-                    "-y",
-                    "-hide_banner",
-                    "-loglevel",
-                    "error",
-                    "-ss",
-                    f"{preview_time:.2f}",
-                    "-i",
-                    str(edit_video_path),
-                    "-vframes",
-                    "1",
-                    "-vf",
-                    preview_filter,
-                    str(preview_path),
-                ],
-                timeout=120,
-            )
-
-            if (
-                preview_result.returncode
-                == 0
-                and preview_path.exists()
+            if cache_key and (
+                st.session_state.get(
+                    "edit_preview_key"
+                )
+                != cache_key
+                or not preview_path.exists()
             ):
+
+                preview_result = run_cmd(
+                    [
+                        FFMPEG,
+                        "-y",
+                        "-hide_banner",
+                        "-loglevel",
+                        "error",
+                        "-ss",
+                        f"{preview_time:.2f}",
+                        "-i",
+                        str(edit_video_path),
+                        "-vframes",
+                        "1",
+                        "-vf",
+                        preview_filter,
+                        str(preview_path),
+                    ],
+                    timeout=120,
+                )
+
+                if (
+                    preview_result.returncode
+                    == 0
+                    and preview_path.exists()
+                ):
+
+                    st.session_state[
+                        "edit_preview_key"
+                    ] = cache_key
+
+                else:
+
+                    preview_path.unlink(
+                        missing_ok=True
+                    )
+
+                    st.error(
+                        "Preview failed: "
+                        + (
+                            preview_result.stderr
+                            or ""
+                        )[:300]
+                    )
+
+                    st.session_state[
+                        "edit_preview_key"
+                    ] = cache_key
+
+            if preview_path.exists():
 
                 st.image(
                     str(preview_path),
                     caption=(
-                        "Preview at "
+                        "Live preview at "
                         f"{preview_time:.1f}s"
                     ),
-                )
-
-            else:
-
-                st.error(
-                    "Preview failed: "
-                    + (
-                        preview_result.stderr
-                        or ""
-                    )[:500]
                 )
 
         except Exception as exc:
@@ -3926,6 +3985,15 @@ if (
             )
 
             st.exception(exc)
+
+    else:
+
+        st.info(
+            "Choose a video first — "
+            "every change then updates "
+            "this preview instantly, "
+            "no button needed."
+        )
 
     output_name = st.text_input(
         "Output filename",
