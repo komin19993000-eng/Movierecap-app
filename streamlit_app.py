@@ -61,6 +61,29 @@ MAX_TTS_SPEED = 1.30
 
 VOICE_GAP = 0.04
 
+# ============================================================
+# VOICEOVER TIMING POLICY
+# ============================================================
+# Speech sped up beyond MAX_INTELLIGIBLE_SPEEDUP becomes
+# unintelligible ("chipmunk" audio). The fitter never exceeds
+# this cap. Over-long narration is rewritten shorter once via
+# AI (proper paraphrase, not truncation); any remainder is
+# allowed to overflow slightly into the following pause.
+MAX_INTELLIGIBLE_SPEEDUP = 1.35
+
+# Rough Burmese TTS rate (chars/sec), used only to budget the
+# one-shot AI rewrite. The real gate is re-measuring the TTS
+# file afterwards, so an imperfect estimate is safe.
+REWRITE_TARGET_CPS = 11.0
+
+# Persistent work dir for the Edit step (Step 1/2 outputs that
+# the editor reuses). Lives for the process lifetime.
+EDIT_WORK_DIR = Path(
+    tempfile.mkdtemp(
+        prefix="movierecap_edit_"
+    )
+)
+
 
 # ============================================================
 # UI STYLE
@@ -1799,6 +1822,73 @@ def make_tts(
     )
 
 
+def rewrite_shorter_burmese(
+    client,
+    text: str,
+    max_chars: int,
+):
+    """Ask Gemini to paraphrase Burmese narration more concisely.
+
+    Unlike hard character truncation (which cuts mid-sentence and
+    destroys meaning), this rewrites with complete sentences.
+    Returns the shorter text, or None when rewriting failed or
+    did not shorten anything.
+    """
+
+    text = clean_text(text)
+
+    if not text:
+        return None
+
+    prompt = (
+        "You are a professional Myanmar dubbing scriptwriter.\n"
+        "Rewrite the Burmese narration below so it is SHORTER "
+        "and fits within about "
+        f"{max(8, int(max_chars))} characters.\n"
+        "Rules:\n"
+        "- Use complete sentences only. NEVER cut a sentence off.\n"
+        "- Keep the core meaning, character names and emotion.\n"
+        "- Drop filler words and secondary detail.\n"
+        "- Natural spoken Burmese.\n"
+        "- Do NOT add quotation marks.\n"
+        "- Return ONLY the rewritten Burmese text, no explanation.\n"
+        "\n"
+        f"Original ({len(text)} characters):\n"
+        f"{text}"
+    )
+
+    try:
+
+        response = (
+            client.models.generate_content(
+                model=get_gemini_model(),
+                contents=prompt,
+            )
+        )
+
+        new_text = clean_text(
+            getattr(
+                response,
+                "text",
+                "",
+            )
+        ).strip(
+            "\"\u201c\u201d'"
+        ).strip()
+
+        if (
+            new_text
+            and len(new_text)
+            < len(text)
+        ):
+            return new_text
+
+    except Exception:
+        pass
+
+    return None
+
+
 # ============================================================
 # SAFE AUDIO SPEED
 # ============================================================
@@ -1874,12 +1964,20 @@ def fit_tts_to_slot(
     else:
 
         # ====================================================
-        # IMPORTANT FIX
+        # INTELLIGIBILITY CAP.
+        # Never speed speech beyond MAX_INTELLIGIBLE_SPEEDUP.
+        # If the narration is longer than the slot even at that
+        # speed, the caller may first try an AI rewrite; the
+        # remainder is allowed to overflow slightly into the
+        # following pause instead of becoming chipmunk audio.
         # ====================================================
 
-        factor = max(
-            required_factor,
-            user_speed,
+        factor = min(
+            max(
+                required_factor,
+                user_speed,
+            ),
+            MAX_INTELLIGIBLE_SPEEDUP,
         )
 
     audio_filter = (
@@ -1937,10 +2035,16 @@ def build_voiceover(
     speed,
     work_dir,
     progress_callback,
+    gemini_client=None,
 ):
 
     clips = []
     total = len(segments)
+
+    # Lines that were rewritten shorter by AI, and lines that
+    # still overflow their slot even at the intelligibility cap.
+    rewritten_count = 0
+    overflow_lines = []
 
     for index, item in enumerate(
         segments,
@@ -2023,12 +2127,118 @@ def build_voiceover(
             raw,
         )
 
+        # If the narration cannot fit the slot at an
+        # intelligible speed, try ONE proper AI rewrite
+        # (complete sentences, not truncation) before
+        # accepting a slight overflow into the next pause.
+
+        raw_duration = ffprobe_duration(
+            raw
+        )
+
+        if (
+            gemini_client is not None
+            and raw_duration
+            / max(slot, 0.20)
+            > MAX_INTELLIGIBLE_SPEEDUP
+        ):
+
+            progress_callback(
+                0.05
+                + 0.75
+                * (index / total),
+                (
+                    f"Line {index}/{total} "
+                    "too long — rewriting shorter..."
+                ),
+            )
+
+            target_chars = max(
+                8,
+                int(
+                    slot
+                    * MAX_INTELLIGIBLE_SPEEDUP
+                    * REWRITE_TARGET_CPS
+                ),
+            )
+
+            try:
+
+                shorter = (
+                    rewrite_shorter_burmese(
+                        gemini_client,
+                        text,
+                        target_chars,
+                    )
+                )
+
+            except Exception:
+
+                shorter = None
+
+            if shorter:
+
+                retry_raw = (
+                    work_dir
+                    / f"tts_{index:04d}_r.mp3"
+                )
+
+                try:
+
+                    make_tts(
+                        shorter,
+                        voice,
+                        style,
+                        retry_raw,
+                    )
+
+                    retry_raw.replace(
+                        raw
+                    )
+
+                    text = shorter
+
+                    item["burmese"] = (
+                        shorter
+                    )
+
+                    rewritten_count += 1
+
+                    raw_duration = (
+                        ffprobe_duration(
+                            raw
+                        )
+                    )
+
+                except Exception:
+
+                    if retry_raw.exists():
+                        retry_raw.unlink()
+
         fit_tts_to_slot(
             raw,
             fitted,
             slot,
             speed,
         )
+
+        overflow = (
+            raw_duration
+            / MAX_INTELLIGIBLE_SPEEDUP
+            - slot
+        )
+
+        if overflow > 0.05:
+
+            overflow_lines.append(
+                (
+                    index,
+                    round(
+                        overflow,
+                        2,
+                    ),
+                )
+            )
 
         clips.append(
             (
@@ -2190,6 +2400,482 @@ def build_voiceover(
         "Voiceover ပြီးပါပြီ",
     )
 
+    return (
+        output,
+        segments,
+        {
+            "rewritten": rewritten_count,
+            "overflow": overflow_lines,
+        },
+    )
+
+
+# ============================================================
+# EDIT & EXPORT HELPERS
+# ============================================================
+
+def probe_media(
+    path: Path
+) -> dict:
+    """Width/height/duration + stream presence via ffmpeg -i."""
+
+    info = {
+        "width": 0,
+        "height": 0,
+        "duration": 0.0,
+        "has_audio": False,
+        "has_video": False,
+    }
+
+    result = run_cmd(
+        [
+            FFMPEG,
+            "-hide_banner",
+            "-i",
+            str(path),
+        ],
+        timeout=60,
+    )
+
+    err = result.stderr or ""
+
+    match = re.search(
+        r"Duration:\s*(\d+):(\d+):([\d.]+)",
+        err,
+    )
+
+    if match:
+        info["duration"] = (
+            int(match.group(1)) * 3600
+            + int(match.group(2)) * 60
+            + float(match.group(3))
+        )
+
+    video_match = re.search(
+        r"Stream #\d+:\d+[^:]*: Video:[^\n]*?"
+        r"(\d{2,5})x(\d{2,5})",
+        err,
+    )
+
+    if video_match:
+        info["width"] = int(
+            video_match.group(1)
+        )
+        info["height"] = int(
+            video_match.group(2)
+        )
+        info["has_video"] = True
+
+    if re.search(
+        r"Stream #\d+:\d+[^:]*: Audio:",
+        err,
+    ):
+        info["has_audio"] = True
+
+    return info
+
+
+def find_myanmar_font() -> str:
+    """A font family with Myanmar glyphs, or '' when none found."""
+
+    try:
+
+        result = subprocess.run(
+            [
+                "fc-list",
+                ":lang=my",
+                "family",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            timeout=15,
+        )
+
+        for line in (
+            result.stdout or ""
+        ).splitlines():
+
+            family = line.split(
+                ","
+            )[0].strip()
+
+            if family:
+                return family
+
+    except Exception:
+        pass
+
+    return ""
+
+
+def mask_filter_chain(
+    start_label: str,
+    masks: list,
+    blur_radius: int,
+):
+    """Cover regions (hardcoded subtitles) with blur or black box."""
+
+    parts = []
+    current = start_label
+
+    for i, mask in enumerate(masks):
+
+        x = max(0, int(mask["x"]))
+        y = max(0, int(mask["y"]))
+        w = max(2, int(mask["w"]))
+        h = max(2, int(mask["h"]))
+
+        if mask.get("mode") == "blur":
+
+            radius = max(
+                2,
+                int(blur_radius),
+            )
+
+            parts.append(
+                f"{current}split=2"
+                f"[vin{i}][vcp{i}]"
+            )
+
+            parts.append(
+                f"[vin{i}]"
+                f"crop={w}:{h}:{x}:{y},"
+                f"boxblur=luma_radius={radius}:"
+                f"luma_power=3"
+                f"[mk{i}]"
+            )
+
+            parts.append(
+                f"[vcp{i}][mk{i}]"
+                f"overlay={x}:{y}"
+                f"[vmsk{i}]"
+            )
+
+        else:
+
+            parts.append(
+                f"{current}"
+                f"drawbox=x={x}:y={y}:"
+                f"w={w}:h={h}:"
+                f"color=black:t=fill"
+                f"[vmsk{i}]"
+            )
+
+        current = f"[vmsk{i}]"
+
+    return (
+        ";".join(parts),
+        current,
+    )
+
+
+def subtitles_filter_arg(
+    srt_path: Path,
+    font: str,
+    size: int,
+    position: str,
+) -> str:
+
+    alignment = {
+        "bottom": 2,
+        "middle": 5,
+        "top": 8,
+    }.get(position, 2)
+
+    margin_v = {
+        "bottom": 45,
+        "middle": 0,
+        "top": 45,
+    }.get(position, 45)
+
+    style = (
+        f"FontName={font},"
+        f"FontSize={int(size)},"
+        "PrimaryColour=&H00FFFFFF,"
+        "OutlineColour=&H80000000,"
+        "BorderStyle=1,Outline=2,Shadow=0,"
+        f"Alignment={alignment},"
+        f"MarginV={margin_v}"
+    )
+
+    return (
+        f"subtitles='{srt_path}'"
+        f":force_style='{style}'"
+    )
+
+
+def ratio_filter_chain(
+    start_label: str,
+    ratio: str,
+    bg_blur: int,
+):
+    """Convert aspect ratio; blurred-background variants included."""
+
+    if ratio == "9:16 vertical (crop)":
+
+        return (
+            f"{start_label}"
+            "scale=1080:1920:"
+            "force_original_aspect_ratio=increase,"
+            "crop=1080:1920"
+            "[vratio]",
+            "[vratio]",
+        )
+
+    if ratio in (
+        "9:16 vertical (blur background)",
+        "1:1 square (blur background)",
+    ):
+
+        out_w, out_h = (
+            (1080, 1920)
+            if ratio.startswith("9:16")
+            else (1080, 1080)
+        )
+
+        radius = max(
+            2,
+            int(bg_blur),
+        )
+
+        parts = [
+            f"{start_label}split=2[rbg][rfg]",
+            f"[rbg]scale={out_w}:{out_h}:"
+            "force_original_aspect_ratio=increase,"
+            f"crop={out_w}:{out_h},"
+            f"boxblur=luma_radius={radius}:"
+            "luma_power=3[rbg2]",
+            f"[rfg]scale={out_w}:-2[rfg2]",
+            "[rbg2][rfg2]"
+            "overlay=(W-w)/2:(H-h)/2"
+            "[vratio]",
+        ]
+
+        return (
+            ";".join(parts),
+            "[vratio]",
+        )
+
+    return (
+        f"{start_label}"
+        "scale=trunc(iw/2)*2:trunc(ih/2)*2"
+        "[vratio]",
+        "[vratio]",
+    )
+
+
+def build_edit_video_filter(
+    masks,
+    mask_blur,
+    burn_subs,
+    srt_path,
+    sub_font,
+    sub_size,
+    sub_pos,
+    ratio,
+    bg_blur,
+) -> str:
+    """Full -vf chain: masks -> burned subs -> ratio -> yuv420p."""
+
+    filters = []
+    current = "[0:v]"
+
+    if masks:
+
+        chain, current = mask_filter_chain(
+            current,
+            masks,
+            mask_blur,
+        )
+
+        filters.append(chain)
+
+    if burn_subs and srt_path is not None:
+
+        filters.append(
+            f"{current}"
+            + subtitles_filter_arg(
+                srt_path,
+                sub_font,
+                sub_size,
+                sub_pos,
+            )
+            + "[vsub]"
+        )
+
+        current = "[vsub]"
+
+    chain, current = ratio_filter_chain(
+        current,
+        ratio,
+        bg_blur,
+    )
+
+    filters.append(chain)
+
+    filters.append(
+        f"{current}format=yuv420p[vfinal]"
+    )
+
+    return ";".join(filters)
+
+
+def render_edited_video(
+    video_path: Path,
+    voice_path,
+    keep_original: bool,
+    orig_volume: float,
+    masks: list,
+    mask_blur: int,
+    burn_subs: bool,
+    srt_path,
+    sub_font: str,
+    sub_size: int,
+    sub_pos: str,
+    ratio: str,
+    bg_blur: int,
+    out_name: str,
+) -> Path:
+
+    info = probe_media(video_path)
+
+    if not info["has_video"]:
+        raise RuntimeError(
+            "No video stream found in the file."
+        )
+
+    video_filter = build_edit_video_filter(
+        masks,
+        mask_blur,
+        burn_subs,
+        srt_path,
+        sub_font,
+        sub_size,
+        sub_pos,
+        ratio,
+        bg_blur,
+    )
+
+    command = [
+        FFMPEG,
+        "-y",
+        "-hide_banner",
+        "-loglevel",
+        "error",
+        "-i",
+        str(video_path),
+    ]
+
+    voice_index = None
+
+    if (
+        voice_path is not None
+        and Path(voice_path).exists()
+    ):
+
+        voice_index = 1
+
+        command += [
+            "-i",
+            str(voice_path),
+        ]
+
+    filter_parts = [video_filter]
+    audio_map = []
+
+    if voice_index is not None:
+
+        if (
+            keep_original
+            and info["has_audio"]
+        ):
+
+            filter_parts.append(
+                f"[0:a]volume={orig_volume:.3f}"
+                "[a0];"
+                f"[{voice_index}:a]aresample=48000"
+                "[a1];"
+                "[a0][a1]amix=inputs=2:"
+                "duration=longest:"
+                "dropout_transition=0"
+                "[aout]"
+            )
+
+            audio_map = [
+                "-map",
+                "[aout]",
+            ]
+
+        else:
+
+            audio_map = [
+                "-map",
+                f"{voice_index}:a",
+            ]
+
+    elif (
+        keep_original
+        and info["has_audio"]
+    ):
+
+        filter_parts.append(
+            f"[0:a]volume={orig_volume:.3f}[aout]"
+        )
+
+        audio_map = [
+            "-map",
+            "[aout]",
+        ]
+
+    else:
+
+        audio_map = ["-an"]
+
+    output = EDIT_WORK_DIR / out_name
+
+    command += [
+        "-filter_complex",
+        ";".join(filter_parts),
+        "-map",
+        "[vfinal]",
+        *audio_map,
+        "-c:v",
+        "libx264",
+        "-preset",
+        "veryfast",
+        "-crf",
+        "20",
+        "-c:a",
+        "aac",
+        "-b:a",
+        "160k",
+        "-ar",
+        "48000",
+        "-ac",
+        "2",
+        "-movflags",
+        "+faststart",
+        "-shortest",
+        str(output),
+    ]
+
+    result = run_cmd(
+        command,
+        timeout=3600,
+    )
+
+    if (
+        result.returncode != 0
+        or not output.exists()
+        or output.stat().st_size < 5000
+    ):
+
+        raise RuntimeError(
+            "Render failed.\n"
+            + (result.stderr or "")[-2000:]
+        )
+
     return output
 
 
@@ -2215,6 +2901,9 @@ if "voice_name" not in st.session_state:
 
 if "current_key_index" not in st.session_state:
     st.session_state.current_key_index = 0
+
+if "step1_video_path" not in st.session_state:
+    st.session_state.step1_video_path = ""
 
 
 # ============================================================
@@ -2301,6 +2990,30 @@ if make_srt_button:
 
             video_path.write_bytes(
                 video_file.getbuffer()
+            )
+
+            # Keep a persistent copy for the Edit step
+            # (the temp dir above is deleted afterwards).
+
+            persist_video = (
+                EDIT_WORK_DIR
+                / (
+                    "step1_video"
+                    + (
+                        Path(
+                            video_file.name
+                        ).suffix
+                        or ".mp4"
+                    )
+                )
+            )
+
+            persist_video.write_bytes(
+                video_file.getbuffer()
+            )
+
+            st.session_state.step1_video_path = str(
+                persist_video
             )
 
             status = st.empty()
@@ -2575,7 +3288,11 @@ if make_voice_button:
                 0.0
             )
 
-            voice_path = build_voiceover(
+            (
+                voice_path,
+                segments,
+                timing_report,
+            ) = build_voiceover(
                 segments,
                 VOICES[
                     selected_voice
@@ -2591,7 +3308,49 @@ if make_voice_button:
                         text
                     ),
                 ),
+                gemini_client=(
+                    get_gemini_client(
+                        st.session_state.current_key_index
+                    )
+                ),
             )
+
+            if timing_report["rewritten"]:
+
+                # Keep the SRT in sync with the rewritten narration.
+                st.session_state.srt_text = make_srt(
+                    segments
+                )
+
+                st.info(
+                    "AI rewrote "
+                    f"{timing_report['rewritten']} "
+                    "over-long lines shorter "
+                    "(complete sentences, meaning kept). "
+                    "The SRT above was updated to match."
+                )
+
+            if timing_report["overflow"]:
+
+                total_over = round(
+                    sum(
+                        sec
+                        for _, sec
+                        in timing_report[
+                            "overflow"
+                        ]
+                    ),
+                    1,
+                )
+
+                st.warning(
+                    f"{len(timing_report['overflow'])} "
+                    "lines still run past their slots "
+                    f"({total_over}s total). They were kept "
+                    "at max 1.35x speed for intelligibility "
+                    "and extend slightly into the following "
+                    "pause instead of chipmunk audio."
+                )
 
             voice_bytes = (
                 voice_path.read_bytes()
@@ -2665,6 +3424,599 @@ if st.session_state.voice_bytes:
         mime="audio/mp4",
         use_container_width=True,
     )
+
+
+# ============================================================
+# STEP 3 — EDIT & EXPORT
+# ============================================================
+
+st.markdown("---")
+
+st.markdown(
+    '<div class="section-title">'
+    "③ Edit &amp; Export"
+    "</div>",
+    unsafe_allow_html=True,
+)
+
+edit_video_file = st.file_uploader(
+    "Video file",
+    type=[
+        "mp4",
+        "mov",
+        "mkv",
+        "webm",
+    ],
+    key="edit_video",
+)
+
+use_step1_video = False
+
+if (
+    st.session_state.step1_video_path
+    and Path(
+        st.session_state.step1_video_path
+    ).exists()
+):
+
+    use_step1_video = st.checkbox(
+        "Use the video from Step 1",
+        value=True,
+    )
+
+edit_video_path = None
+
+if use_step1_video:
+
+    edit_video_path = Path(
+        st.session_state.step1_video_path
+    )
+
+elif edit_video_file:
+
+    edit_video_path = (
+        EDIT_WORK_DIR
+        / (
+            "edit_video"
+            + (
+                Path(
+                    edit_video_file.name
+                ).suffix
+                or ".mp4"
+            )
+        )
+    )
+
+    edit_video_path.write_bytes(
+        edit_video_file.getbuffer()
+    )
+
+voiceover_choice = st.radio(
+    "Voiceover track",
+    [
+        "Use Step 2 voiceover",
+        "Upload audio file",
+        "None",
+    ],
+    horizontal=True,
+)
+
+edit_voice_path = None
+
+if voiceover_choice == "Use Step 2 voiceover":
+
+    if st.session_state.voice_bytes:
+
+        edit_voice_path = (
+            EDIT_WORK_DIR
+            / "edit_voiceover.m4a"
+        )
+
+        edit_voice_path.write_bytes(
+            st.session_state.voice_bytes
+        )
+
+    else:
+
+        st.info(
+            "No Step 2 voiceover yet — "
+            "generate one above or upload a file."
+        )
+
+elif voiceover_choice == "Upload audio file":
+
+    voiceover_upload = st.file_uploader(
+        "Voiceover audio",
+        type=[
+            "m4a",
+            "mp3",
+            "wav",
+            "aac",
+        ],
+        key="edit_voiceover",
+    )
+
+    if voiceover_upload:
+
+        edit_voice_path = (
+            EDIT_WORK_DIR
+            / (
+                "edit_voiceover_up"
+                + (
+                    Path(
+                        voiceover_upload.name
+                    ).suffix
+                    or ".m4a"
+                )
+            )
+        )
+
+        edit_voice_path.write_bytes(
+            voiceover_upload.getbuffer()
+        )
+
+srt_choice = st.radio(
+    "Subtitle source",
+    [
+        "Use Step 1 SRT",
+        "Upload SRT file",
+        "None",
+    ],
+    horizontal=True,
+)
+
+edit_srt_path = None
+edit_srt_available = False
+
+if srt_choice == "Use Step 1 SRT":
+
+    if st.session_state.srt_text:
+
+        edit_srt_path = (
+            EDIT_WORK_DIR
+            / "edit_subs.srt"
+        )
+
+        edit_srt_path.write_text(
+            st.session_state.srt_text,
+            encoding="utf-8-sig",
+        )
+
+        edit_srt_available = True
+
+    else:
+
+        st.info("No Step 1 SRT yet.")
+
+elif srt_choice == "Upload SRT file":
+
+    srt_upload = st.file_uploader(
+        "SRT file",
+        type=["srt"],
+        key="edit_srt",
+    )
+
+    if srt_upload:
+
+        edit_srt_path = (
+            EDIT_WORK_DIR
+            / "edit_subs_up.srt"
+        )
+
+        edit_srt_path.write_bytes(
+            srt_upload.getvalue()
+        )
+
+        edit_srt_available = True
+
+if (
+    edit_video_path is not None
+    and edit_video_path.exists()
+):
+
+    media_info = probe_media(
+        edit_video_path
+    )
+
+    if not media_info["has_video"]:
+
+        st.error(
+            "No video stream found in the file."
+        )
+
+        st.stop()
+
+    st.caption(
+        f"{media_info['width']}x{media_info['height']} | "
+        f"{media_info['duration']:.1f}s | "
+        f"{'has audio' if media_info['has_audio'] else 'no audio'}"
+    )
+
+    st.subheader("Audio")
+
+    original_choice = st.radio(
+        "Original video audio",
+        [
+            "Mute original audio",
+            "Keep original audio",
+        ],
+        horizontal=True,
+    )
+
+    original_volume = 0.0
+
+    if (
+        original_choice
+        == "Keep original audio"
+        and media_info["has_audio"]
+    ):
+
+        original_volume = (
+            st.slider(
+                "Original audio volume",
+                0,
+                100,
+                40,
+            )
+            / 100.0
+        )
+
+    st.subheader(
+        "Mask hardcoded subtitles"
+    )
+
+    mask_enabled = st.checkbox(
+        "Cover burned-in subtitles with a mask",
+        value=False,
+    )
+
+    edit_masks = []
+    edit_mask_blur = 25
+
+    if mask_enabled:
+
+        mask_preset = st.selectbox(
+            "Mask area",
+            [
+                "Bottom strip",
+                "Top strip",
+                "Custom",
+            ],
+        )
+
+        src_w = media_info["width"]
+        src_h = media_info["height"]
+
+        if mask_preset == "Bottom strip":
+
+            mx, my = 0, int(
+                src_h * 0.78
+            )
+            mw, mh = src_w, int(
+                src_h * 0.22
+            )
+
+        elif mask_preset == "Top strip":
+
+            mx, my = 0, 0
+            mw, mh = src_w, int(
+                src_h * 0.15
+            )
+
+        else:
+
+            cx = st.slider(
+                "Mask X (%)",
+                0,
+                100,
+                0,
+            )
+            cy = st.slider(
+                "Mask Y (%)",
+                0,
+                100,
+                78,
+            )
+            cw = st.slider(
+                "Mask width (%)",
+                1,
+                100,
+                100,
+            )
+            ch = st.slider(
+                "Mask height (%)",
+                1,
+                100,
+                22,
+            )
+
+            mx = int(src_w * cx / 100)
+            my = int(src_h * cy / 100)
+            mw = int(src_w * cw / 100)
+            mh = int(src_h * ch / 100)
+
+        mask_style = st.radio(
+            "Mask style",
+            [
+                "Blur",
+                "Black box",
+            ],
+            horizontal=True,
+        )
+
+        if mask_style == "Blur":
+
+            edit_mask_blur = (
+                st.slider(
+                    "Mask blur strength",
+                    1,
+                    10,
+                    5,
+                )
+                * 5
+            )
+
+        edit_masks = [
+            {
+                "x": mx,
+                "y": my,
+                "w": mw,
+                "h": mh,
+                "mode": (
+                    "blur"
+                    if mask_style
+                    == "Blur"
+                    else "black"
+                ),
+            }
+        ]
+
+    st.subheader("Subtitles")
+
+    sub_font = find_myanmar_font()
+
+    if not sub_font:
+
+        st.warning(
+            "No Myanmar font found on this server — "
+            "burned subtitles may show as boxes. "
+            "Install a Myanmar font (e.g. Noto Sans Myanmar) "
+            "to fix it."
+        )
+
+        sub_font = "sans-serif"
+
+    burn_subs = st.checkbox(
+        "Burn subtitles into the video",
+        value=edit_srt_available,
+    )
+
+    sub_size = st.slider(
+        "Subtitle size",
+        12,
+        64,
+        28,
+    )
+
+    sub_position = st.selectbox(
+        "Subtitle position",
+        [
+            "bottom",
+            "middle",
+            "top",
+        ],
+    )
+
+    st.subheader("Aspect ratio")
+
+    out_ratio = st.selectbox(
+        "Output ratio",
+        [
+            "Original",
+            "9:16 vertical (blur background)",
+            "9:16 vertical (crop)",
+            "1:1 square (blur background)",
+        ],
+    )
+
+    bg_blur = 0
+
+    if "blur background" in out_ratio:
+
+        bg_blur = (
+            st.slider(
+                "Background blur strength",
+                1,
+                10,
+                6,
+            )
+            * 5
+        )
+
+    preview_time = st.slider(
+        "Preview timestamp (seconds)",
+        0.0,
+        max(
+            1.0,
+            media_info["duration"],
+        ),
+        min(
+            30.0,
+            media_info["duration"] * 0.3,
+        ),
+    )
+
+    preview_button = st.button(
+        "Preview frame",
+        use_container_width=True,
+    )
+
+    if preview_button:
+
+        try:
+
+            preview_filter = (
+                build_edit_video_filter(
+                    edit_masks,
+                    edit_mask_blur,
+                    burn_subs
+                    and edit_srt_available,
+                    edit_srt_path,
+                    sub_font,
+                    sub_size,
+                    sub_position,
+                    out_ratio,
+                    bg_blur,
+                )
+            )
+
+            preview_path = (
+                EDIT_WORK_DIR
+                / "preview.jpg"
+            )
+
+            preview_result = run_cmd(
+                [
+                    FFMPEG,
+                    "-y",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-ss",
+                    f"{preview_time:.2f}",
+                    "-i",
+                    str(edit_video_path),
+                    "-vframes",
+                    "1",
+                    "-vf",
+                    preview_filter,
+                    str(preview_path),
+                ],
+                timeout=120,
+            )
+
+            if (
+                preview_result.returncode
+                == 0
+                and preview_path.exists()
+            ):
+
+                st.image(
+                    str(preview_path),
+                    caption=(
+                        "Preview at "
+                        f"{preview_time:.1f}s"
+                    ),
+                )
+
+            else:
+
+                st.error(
+                    "Preview failed: "
+                    + (
+                        preview_result.stderr
+                        or ""
+                    )[:500]
+                )
+
+        except Exception as exc:
+
+            st.error(
+                "Preview failed."
+            )
+
+            st.exception(exc)
+
+    output_name = st.text_input(
+        "Output filename",
+        value="edited_video.mp4",
+    )
+
+    render_button = st.button(
+        "Render final video",
+        type="primary",
+        use_container_width=True,
+    )
+
+    if render_button:
+
+        file_name = safe_filename(
+            output_name.strip(),
+            "edited_video.mp4",
+        )
+
+        if not file_name.lower().endswith(
+            ".mp4"
+        ):
+
+            file_name += ".mp4"
+
+        try:
+
+            with st.spinner(
+                "Rendering video... "
+                "this can take a few minutes."
+            ):
+
+                final_path = (
+                    render_edited_video(
+                        edit_video_path,
+                        edit_voice_path,
+                        keep_original=(
+                            original_choice
+                            == "Keep original audio"
+                            and media_info[
+                                "has_audio"
+                            ]
+                        ),
+                        orig_volume=(
+                            original_volume
+                        ),
+                        masks=edit_masks,
+                        mask_blur=(
+                            edit_mask_blur
+                        ),
+                        burn_subs=(
+                            burn_subs
+                            and edit_srt_available
+                        ),
+                        srt_path=(
+                            edit_srt_path
+                        ),
+                        sub_font=sub_font,
+                        sub_size=sub_size,
+                        sub_pos=(
+                            sub_position
+                        ),
+                        ratio=out_ratio,
+                        bg_blur=bg_blur,
+                        out_name=file_name,
+                    )
+                )
+
+            st.video(
+                str(final_path)
+            )
+
+            st.download_button(
+                "Download final video",
+                data=(
+                    final_path.read_bytes()
+                ),
+                file_name=(
+                    final_path.name
+                ),
+                mime="video/mp4",
+                use_container_width=True,
+            )
+
+        except Exception as exc:
+
+            st.error(
+                "Render failed."
+            )
+
+            st.exception(exc)
 
 
 # ============================================================
