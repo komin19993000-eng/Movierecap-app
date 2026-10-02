@@ -2553,6 +2553,8 @@ def mask_filter_chain(
     start_label: str,
     masks: list,
     blur_radius: int,
+    frame_w: int = 0,
+    frame_h: int = 0,
 ):
     """Cover regions (hardcoded subtitles) with blur or black box."""
 
@@ -2566,10 +2568,24 @@ def mask_filter_chain(
         w = max(2, int(mask["w"]))
         h = max(2, int(mask["h"]))
 
+        if frame_w > 0 and frame_h > 0:
+
+            # Defensive: a mask must never exceed the
+            # frame, no matter how upstream rounding
+            # moved things. Prevents "Invalid too big
+            # ... size" crop crashes.
+
+            x = min(x, frame_w - 2)
+            y = min(y, frame_h - 2)
+            w = min(w, frame_w - x)
+            h = min(h, frame_h - y)
+            w = max(2, w)
+            h = max(2, h)
+
         if mask.get("mode") == "blur":
 
-            # boxblur rejects radius larger than ~half the
-            # frame's smallest plane dimension, so clamp to
+            # boxblur rejects radius >= half the frame's
+            # smallest chroma-plane dimension, so clamp to
             # the mask region (small strips on small videos
             # would otherwise crash the render).
 
@@ -2577,7 +2593,7 @@ def mask_filter_chain(
                 2,
                 min(
                     int(blur_radius),
-                    min(w, h) // 4,
+                    (min(w, h) - 1) // 4,
                 ),
             )
 
@@ -2627,6 +2643,8 @@ def transform_filter_chain(
     src_w: int,
     src_h: int,
     src_fps: float,
+    zoom_cx: float = 50.0,
+    zoom_cy: float = 50.0,
 ):
     """Copyright-evasion transforms: flip -> zoom -> color filter.
 
@@ -2649,10 +2667,38 @@ def transform_filter_chain(
 
         z = max(1.0, float(zoom_amount))
 
+        # Integer-exact math: the old float chain
+        # (scale=iw*z then crop=iw/z) could round-trip
+        # 1px short (e.g. 1024x576 at 1.15x became
+        # 1023x575), which then broke pixel-exact
+        # downstream masks with "Invalid too big ...
+        # size" crop errors. Everything here is ints,
+        # so the output is exactly ew x eh.
+
+        ew = (max(2, int(src_w)) // 2) * 2
+        eh = (max(2, int(src_h)) // 2) * 2
+        sw = max(ew + 2, int(round(ew * z)))
+        sh = max(eh + 2, int(round(eh * z)))
+
+        # Free zoom center: 0/0 = top-left,
+        # 50/50 = center, 100/100 = bottom-right.
+
+        cx = (
+            min(100.0, max(0.0, float(zoom_cx)))
+            / 100.0
+        )
+        cy = (
+            min(100.0, max(0.0, float(zoom_cy)))
+            / 100.0
+        )
+
+        ox = int(round((sw - ew) * cx))
+        oy = int(round((sh - eh) * cy))
+
         parts.append(
             f"{current}"
-            f"scale=iw*{z:.3f}:ih*{z:.3f},"
-            f"crop=iw/{z:.3f}:ih/{z:.3f}"
+            f"scale={sw}:{sh},"
+            f"crop={ew}:{eh}:{ox}:{oy}"
             "[vzoom]"
         )
 
@@ -2722,51 +2768,197 @@ def transform_filter_chain(
     )
 
 
+def _srt_timestamp_to_ass(ts: str) -> str:
+    """'00:00:01,000' -> '0:00:01.00' (ASS format)."""
+
+    m = re.match(
+        r"(\d+):(\d+):(\d+)[,.](\d+)",
+        (ts or "").strip(),
+    )
+
+    if not m:
+        return "0:00:00.00"
+
+    h, mi, s, ms = (int(x) for x in m.groups())
+
+    return f"{h}:{mi:02d}:{s:02d}.{ms // 10:02d}"
+
+
+def _parse_srt_cues(srt_text: str) -> list:
+    """Parse SRT into (start, end, text) with ASS-safe text."""
+
+    cues = []
+
+    for block in re.split(
+        r"\r?\n\s*\r?\n",
+        (srt_text or "").strip(),
+    ):
+
+        lines = [
+            ln
+            for ln in block.splitlines()
+            if ln.strip() != ""
+        ]
+
+        if not lines:
+            continue
+
+        if re.fullmatch(
+            r"\d+", lines[0].strip()
+        ):
+            lines = lines[1:]
+
+        if not lines or "-->" not in lines[0]:
+            continue
+
+        start_raw, end_raw = (
+            p.strip()
+            for p in lines[0].split("-->")
+        )
+
+        text = r"\N".join(lines[1:])
+        text = re.sub(r"<[^>]+>", "", text)
+        text = text.replace("{", "\\{")
+        text = text.replace("}", "\\}")
+
+        cues.append(
+            (
+                _srt_timestamp_to_ass(start_raw),
+                _srt_timestamp_to_ass(end_raw),
+                text,
+            )
+        )
+
+    return cues
+
+
 def subtitles_filter_arg(
     srt_path: Path,
     font: str,
     size: int,
-    position: str,
+    position=88.0,
     color: str = "bright green",
-) -> str:
+    frame_w: int = 0,
+    frame_h: int = 0,
+):
+    """Burn subtitles with a free vertical position.
 
-    alignment = {
-        "bottom": 2,
-        "middle": 5,
-        "top": 8,
-    }.get(position, 2)
+    position is 0-100 (% of screen height, 0 = top,
+    100 = bottom). Legacy "bottom"/"middle"/"top"
+    strings still map to sensible percents.
 
-    margin_v = {
-        "bottom": 45,
-        "middle": 0,
-        "top": 45,
-    }.get(position, 45)
+    The SRT is converted to a styled ASS file with
+    PlayRes set to the real frame size — the old
+    force_style approach broke for large MarginV
+    because libass defaults SRT to PlayResY=288 and
+    pushed text off-screen.
+    """
+
+    import hashlib
+
+    legacy = {
+        "bottom": 88.0,
+        "middle": 50.0,
+        "top": 12.0,
+    }
+
+    if isinstance(position, str):
+        pos = legacy.get(
+            position.lower(), 88.0
+        )
+    else:
+        try:
+            pos = float(position)
+        except (TypeError, ValueError):
+            pos = 88.0
+
+    pos = min(95.0, max(5.0, pos))
+
+    fw = max(320, int(frame_w or 1280))
+    fh = max(240, int(frame_h or 720))
+    margin_v = int(
+        round(fh * (100.0 - pos) / 100.0)
+    )
 
     # ASS uses &HAABBGGRR
+    color_key = (color or "bright green").lower()
+
     primary = {
         "bright green": "&H0000FF00",
         "white": "&H00FFFFFF",
         "yellow": "&H0000FFFF",
         "cyan": "&H00FFFF00",
     }.get(
-        (color or "bright green").lower(),
+        color_key,
         "&H0000FF00",
     )
 
-    style = (
-        f"FontName={font},"
-        f"FontSize={int(size)},"
-        f"PrimaryColour={primary},"
-        "OutlineColour=&H80000000,"
-        "BorderStyle=1,Outline=2,Shadow=0,"
-        f"Alignment={alignment},"
-        f"MarginV={margin_v}"
+    srt_path = Path(srt_path)
+    srt_text = srt_path.read_text(
+        encoding="utf-8", errors="replace"
+    )
+    cues = _parse_srt_cues(srt_text)
+
+    # Style settings + content hash in the filename so
+    # any change (text, size, color, position) yields a
+    # fresh file — and busts the preview cache, since
+    # the path is part of the filter string.
+
+    digest = hashlib.md5(
+        srt_text.encode("utf-8", "replace")
+    ).hexdigest()[:8]
+
+    safe_color = re.sub(
+        r"[^a-z0-9]+", "", color_key
     )
 
-    return (
-        f"subtitles='{srt_path}'"
-        f":force_style='{style}'"
+    tag = (
+        f"p{int(round(pos))}"
+        f"s{int(size)}"
+        f"{safe_color}"
+        f"mv{margin_v}"
+        f"{digest}"
     )
+
+    ass_path = srt_path.with_name(
+        f"{srt_path.stem}.{tag}.ass"
+    )
+
+    if not ass_path.exists():
+
+        header = (
+            "[Script Info]\n"
+            "ScriptType: v4.00+\n"
+            f"PlayResX: {fw}\n"
+            f"PlayResY: {fh}\n"
+            "[V4+ Styles]\n"
+            "Format: Name, Fontname, Fontsize, "
+            "PrimaryColour, SecondaryColour, "
+            "OutlineColour, BackColour, Bold, Italic, "
+            "Underline, StrikeOut, ScaleX, ScaleY, "
+            "Spacing, Angle, BorderStyle, Outline, "
+            "Shadow, Alignment, MarginL, MarginR, "
+            "MarginV, Encoding\n"
+            f"Style: Sub,{font},{int(size)},{primary},"
+            "&H000000FF,&H80000000,&H80000000,"
+            "0,0,0,0,100,100,0,0,1,2,0,"
+            f"2,10,10,{margin_v},1\n"
+            "[Events]\n"
+            "Format: Layer, Start, End, Style, Name, "
+            "MarginL, MarginR, MarginV, Effect, Text\n"
+        )
+
+        events = "".join(
+            f"Dialogue: 0,{st},{en},Sub,,0,0,0,,"
+            f"{tx}\n"
+            for st, en, tx in cues
+        )
+
+        ass_path.write_text(
+            header + events, encoding="utf-8"
+        )
+
+    return f"subtitles='{ass_path}'"
 
 
 def ratio_filter_chain(
@@ -2843,6 +3035,8 @@ def build_edit_video_filter(
     flip=False,
     zoom_mode="off",
     zoom_amount=1.1,
+    zoom_cx=50.0,
+    zoom_cy=50.0,
     eq_preset="none",
     src_w=0,
     src_h=0,
@@ -2853,6 +3047,12 @@ def build_edit_video_filter(
     filters = []
     current = "[0:v]"
 
+    # Even frame dims: every downstream stage
+    # (masks, subs) is computed against these.
+
+    frame_w = (max(2, int(src_w)) // 2) * 2
+    frame_h = (max(2, int(src_h)) // 2) * 2
+
     chain, current = transform_filter_chain(
         current,
         flip,
@@ -2862,6 +3062,8 @@ def build_edit_video_filter(
         src_w,
         src_h,
         src_fps,
+        zoom_cx=zoom_cx,
+        zoom_cy=zoom_cy,
     )
 
     if chain:
@@ -2873,6 +3075,8 @@ def build_edit_video_filter(
             current,
             masks,
             mask_blur,
+            frame_w=frame_w,
+            frame_h=frame_h,
         )
 
         filters.append(chain)
@@ -2887,6 +3091,8 @@ def build_edit_video_filter(
                 sub_size,
                 sub_pos,
                 sub_color,
+                frame_w=frame_w,
+                frame_h=frame_h,
             )
             + "[vsub]"
         )
@@ -3092,6 +3298,8 @@ def render_edited_video(
     flip: bool = False,
     zoom_mode: str = "off",
     zoom_amount: float = 1.1,
+    zoom_cx: float = 50.0,
+    zoom_cy: float = 50.0,
     eq_preset: str = "none",
     bgm_path=None,
     bgm_volume: float = 0.15,
@@ -3125,6 +3333,8 @@ def render_edited_video(
         flip=flip,
         zoom_mode=zoom_mode,
         zoom_amount=zoom_amount,
+        zoom_cx=zoom_cx,
+        zoom_cy=zoom_cy,
         eq_preset=eq_preset,
         src_w=info["width"],
         src_h=info["height"],
@@ -4254,13 +4464,15 @@ with c_ctrl:
     sub_font = "sans-serif"
     burn_subs = False
     sub_size = 28
-    sub_position = "bottom"
+    sub_position = 88.0
     sub_color = "Bright green"
     out_ratio = "Original"
     bg_blur = 0
     flip_enabled = True
     zoom_choice = "Static zoom"
     zoom_amount = 1.10
+    zoom_cx = 50.0
+    zoom_cy = 50.0
     eq_choice = "Vivid"
     bgm_enabled = False
     edit_bgm_path = None
@@ -4335,78 +4547,134 @@ with c_ctrl:
         edit_masks = []
         edit_mask_blur = 25
 
+        if "edit_mask_list" not in st.session_state:
+            st.session_state["edit_mask_list"] = []
+
+        if "edit_mask_uid" not in st.session_state:
+            st.session_state["edit_mask_uid"] = 0
+
         if mask_enabled:
 
-            mask_preset = st.selectbox(
-                "Mask area",
-                [
-                    "Bottom strip",
-                    "Top strip",
-                    "Custom",
-                ],
-            )
+            if st.button(
+                "+ Add mask",
+                key="add_mask_btn",
+            ):
 
-            src_w = media_info["width"]
-            src_h = media_info["height"]
+                st.session_state[
+                    "edit_mask_uid"
+                ] += 1
 
-            if mask_preset == "Bottom strip":
-
-                mx, my = 0, int(
-                    src_h * 0.78
-                )
-                mw, mh = src_w, int(
-                    src_h * 0.22
-                )
-
-            elif mask_preset == "Top strip":
-
-                mx, my = 0, 0
-                mw, mh = src_w, int(
-                    src_h * 0.15
+                st.session_state[
+                    "edit_mask_list"
+                ].append(
+                    {
+                        "uid": st.session_state[
+                            "edit_mask_uid"
+                        ],
+                        "x": 0,
+                        "y": 78,
+                        "w": 100,
+                        "h": 22,
+                        "style": "Blur",
+                    }
                 )
 
-            else:
+                st.rerun()
 
-                cx = st.slider(
-                    "Mask X (%)",
-                    0,
-                    100,
-                    0,
-                )
-                cy = st.slider(
-                    "Mask Y (%)",
-                    0,
-                    100,
-                    78,
-                )
-                cw = st.slider(
-                    "Mask width (%)",
-                    1,
-                    100,
-                    100,
-                )
-                ch = st.slider(
-                    "Mask height (%)",
-                    1,
-                    100,
-                    22,
+            mask_list = st.session_state[
+                "edit_mask_list"
+            ]
+
+            if not mask_list:
+
+                st.info(
+                    "No masks yet — tap "
+                    "+ Add mask, then drag the "
+                    "sliders to place each mask "
+                    "freely."
                 )
 
-                mx = int(src_w * cx / 100)
-                my = int(src_h * cy / 100)
-                mw = int(src_w * cw / 100)
-                mh = int(src_h * ch / 100)
+            for pos, m in enumerate(
+                list(mask_list)
+            ):
 
-            mask_style = st.radio(
-                "Mask style",
-                [
-                    "Blur",
-                    "Black box",
-                ],
-                horizontal=True,
-            )
+                uid = m["uid"]
 
-            if mask_style == "Blur":
+                with st.expander(
+                    f"Mask {pos + 1}",
+                    expanded=(pos == 0),
+                ):
+
+                    c1, c2 = st.columns(2)
+
+                    m["x"] = c1.slider(
+                        "X (%)",
+                        0,
+                        100,
+                        int(m["x"]),
+                        key=f"mk_{uid}_x",
+                    )
+                    m["y"] = c2.slider(
+                        "Y (%)",
+                        0,
+                        100,
+                        int(m["y"]),
+                        key=f"mk_{uid}_y",
+                    )
+                    m["w"] = c1.slider(
+                        "Width (%)",
+                        1,
+                        100,
+                        int(m["w"]),
+                        key=f"mk_{uid}_w",
+                    )
+                    m["h"] = c2.slider(
+                        "Height (%)",
+                        1,
+                        100,
+                        int(m["h"]),
+                        key=f"mk_{uid}_h",
+                    )
+
+                    m["style"] = st.radio(
+                        "Style",
+                        [
+                            "Blur",
+                            "Black box",
+                        ],
+                        index=(
+                            0
+                            if m["style"]
+                            == "Blur"
+                            else 1
+                        ),
+                        horizontal=True,
+                        key=f"mk_{uid}_style",
+                    )
+
+                    if st.button(
+                        "Remove this mask",
+                        key=f"mk_{uid}_rm",
+                    ):
+
+                        st.session_state[
+                            "edit_mask_list"
+                        ] = [
+                            mm
+                            for mm in st.session_state[
+                                "edit_mask_list"
+                            ]
+                            if mm["uid"] != uid
+                        ]
+
+                        st.rerun()
+
+            if any(
+                mm["style"] == "Blur"
+                for mm in st.session_state[
+                    "edit_mask_list"
+                ]
+            ):
 
                 edit_mask_blur = (
                     st.slider(
@@ -4418,20 +4686,35 @@ with c_ctrl:
                     * 5
                 )
 
-            edit_masks = [
-                {
-                    "x": mx,
-                    "y": my,
-                    "w": mw,
-                    "h": mh,
-                    "mode": (
-                        "blur"
-                        if mask_style
-                        == "Blur"
-                        else "black"
-                    ),
-                }
-            ]
+            src_w = media_info["width"]
+            src_h = media_info["height"]
+
+            for mm in st.session_state[
+                "edit_mask_list"
+            ]:
+
+                edit_masks.append(
+                    {
+                        "x": int(
+                            src_w * mm["x"] / 100
+                        ),
+                        "y": int(
+                            src_h * mm["y"] / 100
+                        ),
+                        "w": int(
+                            src_w * mm["w"] / 100
+                        ),
+                        "h": int(
+                            src_h * mm["h"] / 100
+                        ),
+                        "mode": (
+                            "blur"
+                            if mm["style"]
+                            == "Blur"
+                            else "black"
+                        ),
+                    }
+                )
 
         st.subheader(
             "Copyright-safe transforms"
@@ -4453,6 +4736,8 @@ with c_ctrl:
         )
 
         zoom_amount = 1.10
+        zoom_cx = 50.0
+        zoom_cy = 50.0
 
         if zoom_choice == "Static zoom":
 
@@ -4462,6 +4747,36 @@ with c_ctrl:
                 1.30,
                 1.10,
                 0.05,
+            )
+
+            zc1, zc2 = st.columns(2)
+
+            zoom_cx = float(
+                zc1.slider(
+                    "Zoom center X (%)",
+                    0,
+                    100,
+                    50,
+                    help=(
+                        "0 = left edge, "
+                        "50 = center, "
+                        "100 = right edge"
+                    ),
+                )
+            )
+
+            zoom_cy = float(
+                zc2.slider(
+                    "Zoom center Y (%)",
+                    0,
+                    100,
+                    50,
+                    help=(
+                        "0 = top edge, "
+                        "50 = center, "
+                        "100 = bottom edge"
+                    ),
+                )
             )
 
         eq_choice = st.selectbox(
@@ -4503,13 +4818,15 @@ with c_ctrl:
             28,
         )
 
-        sub_position = st.selectbox(
-            "Subtitle position",
-            [
-                "bottom",
-                "middle",
-                "top",
-            ],
+        sub_position = st.slider(
+            "Subtitle vertical position (%)",
+            5,
+            95,
+            88,
+            help=(
+                "0 = top of the screen, "
+                "100 = bottom"
+            ),
         )
 
         sub_color = st.selectbox(
@@ -4697,6 +5014,8 @@ with c_prev:
                         )
                     ),
                     zoom_amount=zoom_amount,
+                    zoom_cx=zoom_cx,
+                    zoom_cy=zoom_cy,
                     eq_preset=eq_choice,
                     src_w=media_info["width"],
                     src_h=media_info["height"],
@@ -4898,6 +5217,8 @@ with c_prev:
                             )
                         ),
                         zoom_amount=zoom_amount,
+                        zoom_cx=zoom_cx,
+                        zoom_cy=zoom_cy,
                         eq_preset=eq_choice,
                         bgm_path=(
                             edit_bgm_path
