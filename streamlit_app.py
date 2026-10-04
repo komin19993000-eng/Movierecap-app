@@ -100,15 +100,32 @@ st.markdown(
     """
 <style>
 
-.stApp {
-    background: #f1f5f9;
+/* ============ DARK PRO THEME ============ */
 
-    color: #0f172a;
+.stApp {
+    background:
+        radial-gradient(
+            circle at 15% 0%,
+            rgba(99, 102, 241, 0.14),
+            transparent 30%
+        ),
+        radial-gradient(
+            circle at 85% 10%,
+            rgba(56, 189, 248, 0.10),
+            transparent 30%
+        ),
+        linear-gradient(
+            180deg,
+            #0b0f19 0%,
+            #0d1220 100%
+        );
+
+    color: #e2e8f0;
 }
 
 .block-container {
-    max-width: 1120px;
-    padding-top: 1.5rem;
+    max-width: 1180px;
+    padding-top: 1.2rem;
     padding-bottom: 3rem;
 }
 
@@ -123,25 +140,28 @@ st.markdown(
 .stApp h4,
 .stApp h5,
 .stApp h6 {
-    color: #0f172a;
+    color: #e2e8f0;
 }
 
+/* ---------- hero ---------- */
+
 .hero-box {
-    padding: 26px 24px;
-    margin-bottom: 24px;
-    border-radius: 14px;
+    padding: 22px 24px;
+    margin-bottom: 18px;
+    border-radius: 16px;
 
     background:
         linear-gradient(
             135deg,
-            #1e293b 0%,
-            #334155 100%
+            #1e1b4b 0%,
+            #312e81 55%,
+            #1e3a8a 100%
         );
 
-    border: 1px solid #1e293b;
+    border: 1px solid rgba(129, 140, 248, 0.35);
 
     box-shadow:
-        0 4px 14px rgba(15, 23, 42, 0.18);
+        0 8px 28px rgba(79, 70, 229, 0.28);
 
     text-align: center;
 }
@@ -149,81 +169,170 @@ st.markdown(
 .hero-title {
     margin: 0;
     color: #ffffff !important;
-    font-size: clamp(26px, 5vw, 40px);
+    font-size: clamp(24px, 5vw, 38px);
     font-weight: 800;
     letter-spacing: -0.5px;
 }
 
 .hero-subtitle {
-    margin-top: 8px;
-    color: #cbd5e1 !important;
-    font-size: 15px;
+    margin-top: 6px;
+    color: #c7d2fe !important;
+    font-size: 14px;
     font-weight: 500;
+    letter-spacing: 0.4px;
 }
 
+/* ---------- mode tabs (segmented radio) ---------- */
+
+div[data-testid="stRadio"][key="app_mode"] {
+    background: #141b2e;
+    border: 1px solid #243049;
+    border-radius: 14px;
+    padding: 6px;
+    margin-bottom: 6px;
+}
+
+div[data-testid="stRadio"][key="app_mode"] div[role="radiogroup"] {
+    gap: 6px;
+}
+
+div[data-testid="stRadio"][key="app_mode"] label {
+    background: transparent !important;
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    padding: 8px 6px !important;
+    margin: 0 !important;
+}
+
+div[data-testid="stRadio"][key="app_mode"] label:has(input:checked) {
+    background: linear-gradient(135deg, #4f46e5, #6366f1) !important;
+    border-color: #818cf8 !important;
+    box-shadow: 0 2px 10px rgba(99, 102, 241, 0.45);
+}
+
+div[data-testid="stRadio"][key="app_mode"] label p {
+    font-size: 15px !important;
+    font-weight: 700 !important;
+    color: #94a3b8 !important;
+}
+
+div[data-testid="stRadio"][key="app_mode"] label:has(input:checked) p {
+    color: #ffffff !important;
+}
+
+div[data-testid="stRadio"][key="app_mode"] label > div:first-child {
+    display: none;
+}
+
+/* ---------- section titles ---------- */
+
 .section-title {
-    margin-top: 26px;
+    margin-top: 22px;
     margin-bottom: 14px;
 
     padding: 12px 18px;
 
-    border-radius: 10px;
+    border-radius: 12px;
 
-    background: #1e293b;
+    background: #141b2e;
 
-    border: 1px solid #1e293b;
+    border: 1px solid #243049;
 
-    border-left: 5px solid #4f46e5;
-
-    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+    border-left: 4px solid #6366f1;
 
     color: #ffffff !important;
 
-    font-size: 20px;
+    font-size: 19px;
     font-weight: 700;
 }
+
+/* ---------- cards & expanders ---------- */
+
+.opt-card {
+    background: #141b2e;
+    border: 1px solid #243049;
+    border-radius: 12px;
+    padding: 14px 16px;
+    margin-bottom: 12px;
+}
+
+.opt-card-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #ffffff !important;
+    margin-bottom: 8px;
+}
+
+div[data-testid="stExpander"] {
+    background: #141b2e;
+    border: 1px solid #243049;
+    border-radius: 12px;
+    margin-bottom: 10px;
+}
+
+div[data-testid="stExpander"] summary {
+    color: #e2e8f0 !important;
+    font-weight: 600;
+}
+
+/* ---------- inputs ---------- */
 
 div[data-baseweb="input"] > div,
 div[data-baseweb="textarea"] > div,
 div[data-baseweb="select"] > div {
-    background: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
-    border-radius: 8px !important;
+    background: #1a2236 !important;
+    border: 1px solid #2e3a56 !important;
+    border-radius: 9px !important;
 }
 
 input,
 textarea {
-    color: #0f172a !important;
-    background: #ffffff !important;
-    -webkit-text-fill-color: #0f172a !important;
+    color: #f1f5f9 !important;
+    background: #1a2236 !important;
+    -webkit-text-fill-color: #f1f5f9 !important;
 }
 
 textarea {
-    border-radius: 8px !important;
+    border-radius: 9px !important;
+}
+
+div[data-baseweb="select"] * {
+    color: #f1f5f9 !important;
 }
 
 div[data-testid="stFileUploader"] {
-    background: #ffffff;
+    background: #141b2e;
 
-    border: 1px dashed #94a3b8;
+    border: 1px dashed #3b4a6b;
     border-radius: 12px;
     padding: 10px;
 }
 
 div[data-testid="stFileUploader"] section {
-    background: #ffffff !important;
-    border-radius: 8px !important;
+    background: #1a2236 !important;
+    border-radius: 9px !important;
 }
 
 div[data-testid="stFileUploader"] button {
-    color: #0f172a !important;
-    background: #ffffff !important;
-    border: 1px solid #cbd5e1 !important;
+    color: #e2e8f0 !important;
+    background: #1a2236 !important;
+    border: 1px solid #3b4a6b !important;
 }
 
-div[data-baseweb="select"] * {
-    color: #0f172a !important;
+/* ---------- sliders ---------- */
+
+div[data-testid="stSlider"] div[data-baseweb="slider"] div {
+    color: #e2e8f0 !important;
 }
+
+/* ---------- checkboxes ---------- */
+
+div[data-testid="stCheckbox"] label p {
+    color: #e2e8f0 !important;
+    font-weight: 500;
+}
+
+/* ---------- buttons ---------- */
 
 div.stButton > button,
 div[data-testid="stFormSubmitButton"] button,
@@ -233,32 +342,35 @@ button[kind="primary"] {
 
     color: #ffffff !important;
 
-    background: #4f46e5 !important;
+    background:
+        linear-gradient(
+            135deg,
+            #4f46e5 0%,
+            #6366f1 100%
+        ) !important;
 
-    border: 1px solid #4f46e5 !important;
+    border: 1px solid #818cf8 !important;
 
-    border-radius: 10px !important;
+    border-radius: 11px !important;
 
     font-size: 15px !important;
     font-weight: 700 !important;
 
-    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.35) !important;
+    box-shadow: 0 4px 14px rgba(99, 102, 241, 0.40) !important;
 
     transition: all 0.12s ease;
 }
 
 div.stButton > button:hover,
 div[data-testid="stFormSubmitButton"] button:hover {
-    background: #4338ca !important;
-    border-color: #4338ca !important;
+    filter: brightness(1.12);
     transform: translateY(-1px);
-    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.40) !important;
+    box-shadow: 0 6px 18px rgba(99, 102, 241, 0.50) !important;
 }
 
 div.stButton > button:active,
 div[data-testid="stFormSubmitButton"] button:active {
     transform: translateY(1px);
-    box-shadow: 0 1px 3px rgba(79, 70, 229, 0.30) !important;
 }
 
 div[data-testid="stDownloadButton"] button {
@@ -267,45 +379,60 @@ div[data-testid="stDownloadButton"] button {
 
     color: #ffffff !important;
 
-    background: #0f766e !important;
+    background:
+        linear-gradient(
+            135deg,
+            #0f766e 0%,
+            #14b8a6 100%
+        ) !important;
 
-    border: 1px solid #0f766e !important;
+    border: 1px solid #2dd4bf !important;
 
-    border-radius: 10px !important;
+    border-radius: 11px !important;
 
     font-size: 15px !important;
 
     font-weight: 700 !important;
 
-    box-shadow: 0 2px 6px rgba(15, 118, 110, 0.35) !important;
+    box-shadow: 0 4px 14px rgba(20, 184, 166, 0.35) !important;
 }
 
+/* ---------- progress ---------- */
+
 div[data-testid="stProgress"] > div {
-    background: #e2e8f0 !important;
+    background: #1e293b !important;
     border: none;
     border-radius: 20px;
 }
 
 div[data-testid="stProgress"] div[role="progressbar"] {
-    background: #4f46e5 !important;
+    background:
+        linear-gradient(
+            90deg,
+            #6366f1,
+            #38bdf8
+        ) !important;
 }
 
+/* ---------- alerts ---------- */
+
 div[data-testid="stAlert"] {
-    border: 1px solid #cbd5e1 !important;
+    background: #141b2e !important;
+    border: 1px solid #2e3a56 !important;
     border-radius: 10px !important;
 }
 
 div[data-testid="stAlert"] * {
-    color: #0f172a !important;
+    color: #e2e8f0 !important;
 }
 
 .srt-title {
-    margin-top: 22px;
+    margin-top: 20px;
     margin-bottom: 12px;
 
-    color: #0f172a !important;
+    color: #ffffff !important;
 
-    font-size: 20px;
+    font-size: 18px;
     font-weight: 700;
 }
 
@@ -313,10 +440,9 @@ hr {
     border: 0 !important;
     height: 1px !important;
 
-    background: #cbd5e1 !important;
+    background: #243049 !important;
 
-    border-radius: 0;
-    margin: 30px 0 !important;
+    margin: 26px 0 !important;
 }
 
 .footer {
@@ -327,29 +453,14 @@ hr {
     padding-top: 14px;
 }
 
-/* Option cards for checkbox groups */
-.opt-card {
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
-    border-radius: 10px;
-    padding: 12px 14px;
-    margin-bottom: 10px;
-}
+/* ---------- circular progress ring ---------- */
 
-.opt-card-title {
-    font-size: 14px;
-    font-weight: 700;
-    color: #0f172a !important;
-    margin-bottom: 6px;
-}
-
-/* Circular progress ring */
 .ring-wrap {
     display: flex;
     align-items: center;
     gap: 18px;
-    background: #ffffff;
-    border: 1px solid #e2e8f0;
+    background: #141b2e;
+    border: 1px solid #243049;
     border-radius: 12px;
     padding: 16px 20px;
     margin: 12px 0;
@@ -358,13 +469,25 @@ hr {
 .ring-label {
     font-size: 15px;
     font-weight: 600;
-    color: #0f172a !important;
+    color: #ffffff !important;
 }
 
 .ring-sub {
     font-size: 12px;
-    color: #64748b !important;
+    color: #94a3b8 !important;
     margin-top: 4px;
+}
+
+/* ---------- mask canvas hint ---------- */
+
+.canvas-hint {
+    font-size: 13px;
+    color: #94a3b8 !important;
+    background: #141b2e;
+    border: 1px solid #243049;
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin-bottom: 10px;
 }
 
 </style>
@@ -431,10 +554,10 @@ class RingProgress:
   <svg width="84" height="84"
        viewBox="0 0 120 120">
     <circle cx="60" cy="60" r="{radius}"
-            fill="none" stroke="#e2e8f0"
+            fill="none" stroke="#243049"
             stroke-width="12"/>
     <circle cx="60" cy="60" r="{radius}"
-            fill="none" stroke="#4f46e5"
+            fill="none" stroke="#6366f1"
             stroke-width="12"
             stroke-linecap="round"
             stroke-dasharray="{filled:.1f} {circ:.1f}"
@@ -442,7 +565,7 @@ class RingProgress:
     <text x="60" y="68"
           text-anchor="middle"
           font-size="24" font-weight="700"
-          fill="#0f172a">{shown}%</text>
+          fill="#ffffff">{shown}%</text>
   </svg>
   <div>
     <div class="ring-label">{self._label}</div>
@@ -3965,1525 +4088,1583 @@ if "step1_video_path" not in st.session_state:
 
 
 # ============================================================
+# MODE SELECTOR — only the selected section is shown
+# ============================================================
+
+app_mode = st.radio(
+    "mode",
+    [
+        "srt",
+        "voice",
+        "edit",
+    ],
+    format_func=lambda m: {
+        "srt": "📝 SRT",
+        "voice": "🗣️ Voiceover",
+        "edit": "✂️ Edit & Export",
+    }[m],
+    horizontal=True,
+    label_visibility="collapsed",
+    key="app_mode",
+)
+
+
+# ============================================================
 # STEP 1
 # ============================================================
 
-st.markdown(
-    '<div class="section-title">'
-    '① Video → မြန်မာ SRT'
-    '</div>',
-    unsafe_allow_html=True,
-)
-
-video_file = st.file_uploader(
-    "🎥 Video တင်ပါ",
-    type=[
-        "mp4",
-        "mov",
-        "mkv",
-        "webm",
-    ],
-    key="source_video",
-)
-
-with st.expander(
-    "⚙️ ဆက်တင်",
-    expanded=False,
-):
-
-    selected_translation_style = (
-        exclusive_checkboxes(
-            "🎬 ဘာသာပြန်ပုံစံ",
-            list(
-                TRANSLATION_STYLES.keys()
-            ),
-            "s1_style",
-            0,
-        )
-    )
-
-    speed_factor = st.slider(
-        "⚡ Video speed (applied BEFORE transcription — "
-        "SRT + voiceover stay in sync)",
-        1.00,
-        1.15,
-        1.10,
-        0.05,
-        help=(
-            "Slight speed-up helps avoid copyright "
-            "detection. Applied to the video first, "
-            "so transcription, SRT and voiceover "
-            "are all timed to the sped-up video."
-        ),
-    )
-
-with st.form(
-    "srt_form",
-    clear_on_submit=False,
-):
-
-    srt_output_name = st.text_input(
-        "💾 SRT filename",
-        value=(
-            Path(
-                video_file.name
-            ).stem
-            + "_myanmar.srt"
-        )
-        if video_file
-        else "myanmar.srt",
-    )
-
-    make_srt_button = (
-        st.form_submit_button(
-            "📝 မြန်မာ SRT ထုတ်မယ်",
-            type="primary",
-            use_container_width=True,
-        )
-    )
-
-
-if make_srt_button:
-
-    if not video_file:
-
-        st.error(
-            "Video တစ်ခုအရင်တင်ပါ။"
-        )
-
-        st.stop()
-
-    try:
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-
-            work = Path(temp_dir)
-
-            video_path = (
-                work
-                / "input_video"
-            )
-
-            audio_path = (
-                work
-                / "audio.wav"
-            )
-
-            save_uploaded_file(
-                video_file,
-                video_path,
-            )
-
-            # Optional speed-up BEFORE transcription so that
-            # SRT timestamps + voiceover slots are all timed
-            # to the sped-up video (nothing goes out of sync).
-
-            if speed_factor > 1.001:
-
-                sped_path = (
-                    work
-                    / "input_video_sped.mp4"
-                )
-
-                speed_result = run_cmd(
-                    [
-                        FFMPEG,
-                        "-y",
-                        "-hide_banner",
-                        "-loglevel",
-                        "error",
-                        "-i",
-                        str(video_path),
-                        "-vf",
-                        (
-                            "setpts="
-                            f"PTS/{speed_factor:.3f}"
-                        ),
-                        "-af",
-                        (
-                            "atempo="
-                            f"{speed_factor:.3f}"
-                        ),
-                        "-c:v",
-                        "libx264",
-                        "-preset",
-                        "veryfast",
-                        "-crf",
-                        "20",
-                        "-c:a",
-                        "aac",
-                        str(sped_path),
-                    ],
-                    timeout=1800,
-                )
-
-                if (
-                    speed_result.returncode != 0
-                    or not sped_path.exists()
-                ):
-
-                    raise RuntimeError(
-                        "Speed-up failed.\n"
-                        + (
-                            speed_result.stderr
-                            or ""
-                        )[-1000:]
-                    )
-
-                video_path = sped_path
-
-            # Keep a persistent copy for the Edit step
-            # (the temp dir above is deleted afterwards).
-
-            persist_video = (
-                EDIT_WORK_DIR
-                / (
-                    "step1_video"
-                    + (
-                        Path(
-                            video_file.name
-                        ).suffix
-                        or ".mp4"
-                    )
-                )
-            )
-
-            # Persist the PROCESSED video (after optional
-            # speed-up), not the raw upload — the SRT timings
-            # and voiceover slots are timed to this file, so
-            # the Edit step must use the same one.
-
-            shutil.copy(
-                video_path,
-                persist_video,
-            )
-
-            st.session_state.step1_video_path = str(
-                persist_video
-            )
-
-            ring = RingProgress(
-                "📝 မြန်မာ SRT ထုတ်နေသည်"
-            )
-
-            ring.update(
-                0.05,
-                "🎧 Audio ထုတ်နေသည်...",
-            )
-
-            extract_audio(
-                video_path,
-                audio_path,
-            )
-
-            ring.update(
-                0.12,
-                "🎙️ Dialogue timestamp ရယူနေသည်...",
-            )
-
-            (
-                source_segments,
-                detected_language,
-            ) = deepgram_transcribe(
-                audio_path
-            )
-
-            ring.update(
-                0.25,
-                "🤖 "
-                f"မူရင်းဘာသာစကား: "
-                f"{detected_language} — "
-                "မြန်မာလို ဘာသာပြန်နေသည်...",
-            )
-
-            translated_segments = (
-                build_srt_segments(
-                    None,
-                    source_segments,
-                    lambda p, text: ring.update(
-                        min(p, 0.98),
-                        text,
-                    ),
-                    TRANSLATION_STYLES[
-                        selected_translation_style
-                    ],
-                    detected_language,
-                )
-            )
-
-            srt_text = make_srt(
-                translated_segments
-            )
-
-            st.session_state.srt_text = (
-                srt_text
-            )
-
-            st.session_state.srt_name = (
-                safe_filename(
-                    srt_output_name,
-                    "myanmar.srt",
-                )
-            )
-
-            if not (
-                st.session_state
-                .srt_name
-                .lower()
-                .endswith(".srt")
-            ):
-
-                st.session_state.srt_name += (
-                    ".srt"
-                )
-
-            ring.done(
-                "✅ SRT ပြီးပါပြီ — "
-                f"{len(translated_segments)} "
-                "subtitle lines"
-            )
-
-    except Exception as exc:
-
-        st.error(
-            "SRT ထုတ်ရာမှာ အမှားဖြစ်ပါတယ်။"
-        )
-
-        st.exception(exc)
-
-
-if st.session_state.srt_text:
+if app_mode == "srt":
 
     st.markdown(
-        '<div class="srt-title">'
-        '📄 Myanmar SRT Preview'
+        '<div class="section-title">'
+        '① Video → မြန်မာ SRT'
         '</div>',
         unsafe_allow_html=True,
     )
 
-    st.text_area(
-        "SRT",
-        value=st.session_state.srt_text,
-        height=300,
-        label_visibility="collapsed",
-    )
-
-    st.download_button(
-        "⬇️ Download Myanmar SRT",
-        data=(
-            st.session_state
-            .srt_text
-            .encode("utf-8-sig")
-        ),
-        file_name=(
-            st.session_state
-            .srt_name
-        ),
-        mime="application/x-subrip",
-        use_container_width=True,
-    )
-
-
-# ============================================================
-# STEP 2
-# ============================================================
-
-st.markdown("---")
-
-st.markdown(
-    '<div class="section-title">'
-    '② SRT → မြန်မာ Voiceover'
-    '</div>',
-    unsafe_allow_html=True,
-)
-
-srt_file = st.file_uploader(
-    "📄 SRT ဖိုင်တင်ပါ",
-    type=["srt"],
-    key="voice_srt",
-)
-
-with st.expander(
-    "⚙️ ဆက်တင်",
-    expanded=False,
-):
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-
-        selected_voice = (
-            exclusive_checkboxes(
-                "🎙️ Voice",
-                list(VOICES.keys()),
-                "s2_voice",
-                0,
-            )
-        )
-
-    with col2:
-
-        selected_style = (
-            exclusive_checkboxes(
-                "🎭 Voice Style",
-                list(
-                    VOICE_STYLES.keys()
-                ),
-                "s2_style",
-                0,
-            )
-        )
-
-    selected_speed = st.slider(
-        "⚡ Speed",
-        0.70,
-        1.30,
-        1.00,
-        0.05,
-    )
-
-with st.form(
-    "voice_form",
-    clear_on_submit=False,
-):
-
-    output_filename = st.text_input(
-        "💾 Voiceover filename",
-        value=(
-            "myanmar_voiceover.m4a"
-        ),
-    )
-
-    make_voice_button = (
-        st.form_submit_button(
-            "🗣️ Voiceover ထုတ်မယ်",
-            type="primary",
-            use_container_width=True,
-        )
-    )
-
-
-if make_voice_button:
-
-    source_srt = None
-
-    if srt_file:
-
-        source_srt = (
-            srt_file
-            .getvalue()
-            .decode(
-                "utf-8-sig",
-                errors="replace",
-            )
-        )
-
-    elif st.session_state.srt_text:
-
-        source_srt = (
-            st.session_state.srt_text
-        )
-
-    if not source_srt:
-
-        st.error(
-            "SRT ဖိုင်တင်ပါ "
-            "(သို့) အဆင့် ၁ မှာ SRT အရင်ထုတ်ပါ။"
-        )
-
-        st.stop()
-
-    try:
-
-        segments, fixed_count = (
-            parse_srt(
-                source_srt
-            )
-        )
-
-        if fixed_count:
-
-            st.info(
-                "⏱️ SRT timing ကို "
-                "အလိုအလျောက်ပြင်ပြီးပါပြီ — "
-                f"{fixed_count} ခု"
-            )
-
-        else:
-
-            st.success(
-                "⏱️ SRT timing OK — "
-                f"{len(segments)} lines"
-            )
-
-        with tempfile.TemporaryDirectory() as temp_dir:
-
-            work = Path(temp_dir)
-
-            ring = RingProgress(
-                "🗣️ Voiceover ထုတ်နေသည်"
-            )
-
-            (
-                voice_path,
-                segments,
-                timing_report,
-            ) = build_voiceover(
-                segments,
-                VOICES[
-                    selected_voice
-                ],
-                selected_style,
-                selected_speed,
-                work,
-                lambda p, text: ring.update(
-                    min(p, 1.0),
-                    text,
-                ),
-                gemini_client=(
-                    get_gemini_client(
-                        st.session_state.current_key_index
-                    )
-                ),
-            )
-
-            ring.done(
-                "✅ Voiceover ပြီးပါပြီ"
-            )
-
-            if timing_report["rewritten"]:
-
-                # Keep the SRT in sync with the rewritten narration.
-                st.session_state.srt_text = make_srt(
-                    segments
-                )
-
-                st.info(
-                    "AI rewrote "
-                    f"{timing_report['rewritten']} "
-                    "over-long lines shorter "
-                    "(complete sentences, meaning kept). "
-                    "The SRT above was updated to match."
-                )
-
-            if timing_report["overflow"]:
-
-                total_over = round(
-                    sum(
-                        sec
-                        for _, sec
-                        in timing_report[
-                            "overflow"
-                        ]
-                    ),
-                    1,
-                )
-
-                st.warning(
-                    f"{len(timing_report['overflow'])} "
-                    "lines still run past their slots "
-                    f"({total_over}s total). They were kept "
-                    "at max 1.35x speed for intelligibility "
-                    "and extend slightly into the following "
-                    "pause instead of chipmunk audio."
-                )
-
-            voice_bytes = (
-                voice_path.read_bytes()
-            )
-
-            filename = safe_filename(
-                output_filename,
-                "myanmar_voiceover.m4a",
-            )
-
-            if not filename.lower().endswith(
-                ".m4a"
-            ):
-
-                filename += ".m4a"
-
-            st.session_state.voice_bytes = (
-                voice_bytes
-            )
-
-            st.session_state.voice_name = (
-                filename
-            )
-
-    except Exception as exc:
-
-        st.error(
-            "Voiceover ထုတ်ရာမှာ "
-            "အမှားဖြစ်ပါတယ်။"
-        )
-
-        st.exception(exc)
-
-
-# ============================================================
-# VOICE PREVIEW
-# ============================================================
-
-if st.session_state.voice_bytes:
-
-    st.markdown(
-        '<div class="srt-title">'
-        '🔊 Voiceover Preview'
-        '</div>',
-        unsafe_allow_html=True,
-    )
-
-    st.audio(
-        st.session_state.voice_bytes,
-        format="audio/mp4",
-    )
-
-    st.download_button(
-        "⬇️ Download Voiceover",
-        data=(
-            st.session_state
-            .voice_bytes
-        ),
-        file_name=(
-            st.session_state
-            .voice_name
-        ),
-        mime="audio/mp4",
-        use_container_width=True,
-    )
-
-
-# ============================================================
-# STEP 3 — EDIT & EXPORT
-# ============================================================
-
-st.markdown("---")
-
-st.markdown(
-    '<div class="section-title">'
-    "③ Edit &amp; Export"
-    "</div>",
-    unsafe_allow_html=True,
-)
-
-c_prev, c_ctrl = st.columns([1, 1.15])
-
-with c_ctrl:
-    edit_video_file = st.file_uploader(
-        "Video file",
+    video_file = st.file_uploader(
+        "🎥 Video တင်ပါ",
         type=[
             "mp4",
             "mov",
             "mkv",
             "webm",
         ],
-        key="edit_video",
+        key="source_video",
     )
 
-    use_step1_video = False
-
-    if (
-        st.session_state.step1_video_path
-        and Path(
-            st.session_state.step1_video_path
-        ).exists()
+    with st.expander(
+        "⚙️ ဆက်တင်",
+        expanded=False,
     ):
 
-        use_step1_video = st.checkbox(
-            "Use the video from Step 1",
-            value=True,
-        )
-
-    edit_video_path = None
-
-    if use_step1_video:
-
-        edit_video_path = Path(
-            st.session_state.step1_video_path
-        )
-
-    elif edit_video_file:
-
-        edit_video_path = (
-            EDIT_WORK_DIR
-            / (
-                "edit_video"
-                + (
-                    Path(
-                        edit_video_file.name
-                    ).suffix
-                    or ".mp4"
-                )
+        selected_translation_style = (
+            exclusive_checkboxes(
+                "🎬 ဘာသာပြန်ပုံစံ",
+                list(
+                    TRANSLATION_STYLES.keys()
+                ),
+                "s1_style",
+                0,
             )
         )
 
-        save_uploaded_file(
-            edit_video_file,
-            edit_video_path,
+        speed_factor = st.slider(
+            "⚡ Video speed (applied BEFORE transcription — "
+            "SRT + voiceover stay in sync)",
+            1.00,
+            1.15,
+            1.10,
+            0.05,
+            help=(
+                "Slight speed-up helps avoid copyright "
+                "detection. Applied to the video first, "
+                "so transcription, SRT and voiceover "
+                "are all timed to the sped-up video."
+            ),
         )
 
-    voiceover_choice = st.radio(
-        "Voiceover track",
-        [
-            "Use Step 2 voiceover",
-            "Upload audio file",
-            "None",
-        ],
-        horizontal=True,
-    )
-
-    edit_voice_path = None
-
-    if voiceover_choice == "Use Step 2 voiceover":
-
-        if st.session_state.voice_bytes:
-
-            edit_voice_path = (
-                EDIT_WORK_DIR
-                / "edit_voiceover.m4a"
-            )
-
-            edit_voice_path.write_bytes(
-                st.session_state.voice_bytes
-            )
-
-        else:
-
-            st.info(
-                "No Step 2 voiceover yet — "
-                "generate one above or upload a file."
-            )
-
-    elif voiceover_choice == "Upload audio file":
-
-        voiceover_upload = st.file_uploader(
-            "Voiceover audio",
-            type=[
-                "m4a",
-                "mp3",
-                "wav",
-                "aac",
-            ],
-            key="edit_voiceover",
-        )
-
-        if voiceover_upload:
-
-            edit_voice_path = (
-                EDIT_WORK_DIR
-                / (
-                    "edit_voiceover_up"
-                    + (
-                        Path(
-                            voiceover_upload.name
-                        ).suffix
-                        or ".m4a"
-                    )
-                )
-            )
-
-            edit_voice_path.write_bytes(
-                voiceover_upload.getbuffer()
-            )
-
-    srt_choice = st.radio(
-        "Subtitle source",
-        [
-            "Use Step 1 SRT",
-            "Upload SRT file",
-            "None",
-        ],
-        horizontal=True,
-    )
-
-    edit_srt_path = None
-    edit_srt_available = False
-
-    if srt_choice == "Use Step 1 SRT":
-
-        if st.session_state.srt_text:
-
-            edit_srt_path = (
-                EDIT_WORK_DIR
-                / "edit_subs.srt"
-            )
-
-            edit_srt_path.write_text(
-                st.session_state.srt_text,
-                encoding="utf-8-sig",
-            )
-
-            edit_srt_available = True
-
-        else:
-
-            st.info("No Step 1 SRT yet.")
-
-    elif srt_choice == "Upload SRT file":
-
-        srt_upload = st.file_uploader(
-            "SRT file",
-            type=["srt"],
-            key="edit_srt",
-        )
-
-        if srt_upload:
-
-            edit_srt_path = (
-                EDIT_WORK_DIR
-                / "edit_subs_up.srt"
-            )
-
-            edit_srt_path.write_bytes(
-                srt_upload.getvalue()
-            )
-
-            edit_srt_available = True
-
-    media_info = None
-    edit_masks = []
-    edit_mask_blur = 25
-    sub_font = "sans-serif"
-    burn_subs = False
-    sub_size = 28
-    sub_position = 88.0
-    sub_color = "Bright green"
-    out_ratio = "Original"
-    bg_blur = 0
-    flip_enabled = True
-    zoom_choice = "Static zoom"
-    zoom_amount = 1.10
-    zoom_cx = 50.0
-    zoom_cy = 50.0
-    eq_choice = "Vivid"
-    bgm_enabled = False
-    edit_bgm_path = None
-    bgm_volume = 0.15
-    intro_text = ""
-    outro_text = ""
-    card_duration = 2.0
-    split_enabled = True
-    split_part_len = 120.0
-
-    if (
-        edit_video_path is not None
-        and edit_video_path.exists()
+    with st.form(
+        "srt_form",
+        clear_on_submit=False,
     ):
 
-        media_info = probe_media(
-            edit_video_path
+        srt_output_name = st.text_input(
+            "💾 SRT filename",
+            value=(
+                Path(
+                    video_file.name
+                ).stem
+                + "_myanmar.srt"
+            )
+            if video_file
+            else "myanmar.srt",
         )
 
-        if not media_info["has_video"]:
+        make_srt_button = (
+            st.form_submit_button(
+                "📝 မြန်မာ SRT ထုတ်မယ်",
+                type="primary",
+                use_container_width=True,
+            )
+        )
+
+
+    if make_srt_button:
+
+        if not video_file:
 
             st.error(
-                "No video stream found in the file."
+                "Video တစ်ခုအရင်တင်ပါ။"
             )
 
             st.stop()
 
-        st.caption(
-            f"{media_info['width']}x{media_info['height']} | "
-            f"{media_info['duration']:.1f}s | "
-            f"{'has audio' if media_info['has_audio'] else 'no audio'}"
-        )
-
-        st.subheader("Audio")
-
-        original_choice = st.radio(
-            "Original video audio",
-            [
-                "Mute original audio",
-                "Keep original audio",
-            ],
-            horizontal=True,
-        )
-
-        original_volume = 0.0
-
-        if (
-            original_choice
-            == "Keep original audio"
-            and media_info["has_audio"]
-        ):
-
-            original_volume = (
-                st.slider(
-                    "Original audio volume",
-                    0,
-                    100,
-                    40,
-                )
-                / 100.0
-            )
-
-        st.subheader(
-            "Mask hardcoded subtitles"
-        )
-
-        mask_enabled = st.checkbox(
-            "Cover burned-in subtitles with a mask",
-            value=False,
-        )
-
-        edit_masks = []
-        edit_mask_blur = 25
-
-        if "edit_mask_list" not in st.session_state:
-            st.session_state["edit_mask_list"] = []
-
-        if "edit_mask_uid" not in st.session_state:
-            st.session_state["edit_mask_uid"] = 0
-
-        if mask_enabled:
-
-            if st.button(
-                "+ Add mask",
-                key="add_mask_btn",
-            ):
-
-                st.session_state[
-                    "edit_mask_uid"
-                ] += 1
-
-                st.session_state[
-                    "edit_mask_list"
-                ].append(
-                    {
-                        "uid": st.session_state[
-                            "edit_mask_uid"
-                        ],
-                        "x": 0,
-                        "y": 78,
-                        "w": 100,
-                        "h": 22,
-                        "style": "Blur",
-                    }
-                )
-
-                st.rerun()
-
-            mask_list = st.session_state[
-                "edit_mask_list"
-            ]
-
-            if not mask_list:
-
-                st.info(
-                    "No masks yet — tap "
-                    "+ Add mask, then drag the "
-                    "sliders to place each mask "
-                    "freely."
-                )
-
-            for pos, m in enumerate(
-                list(mask_list)
-            ):
-
-                uid = m["uid"]
-
-                with st.expander(
-                    f"Mask {pos + 1}",
-                    expanded=(pos == 0),
-                ):
-
-                    c1, c2 = st.columns(2)
-
-                    m["x"] = c1.slider(
-                        "X (%)",
-                        0,
-                        100,
-                        int(m["x"]),
-                        key=f"mk_{uid}_x",
-                    )
-                    m["y"] = c2.slider(
-                        "Y (%)",
-                        0,
-                        100,
-                        int(m["y"]),
-                        key=f"mk_{uid}_y",
-                    )
-                    m["w"] = c1.slider(
-                        "Width (%)",
-                        1,
-                        100,
-                        int(m["w"]),
-                        key=f"mk_{uid}_w",
-                    )
-                    m["h"] = c2.slider(
-                        "Height (%)",
-                        1,
-                        100,
-                        int(m["h"]),
-                        key=f"mk_{uid}_h",
-                    )
-
-                    m["style"] = st.radio(
-                        "Style",
-                        [
-                            "Blur",
-                            "Black box",
-                        ],
-                        index=(
-                            0
-                            if m["style"]
-                            == "Blur"
-                            else 1
-                        ),
-                        horizontal=True,
-                        key=f"mk_{uid}_style",
-                    )
-
-                    if st.button(
-                        "Remove this mask",
-                        key=f"mk_{uid}_rm",
-                    ):
-
-                        st.session_state[
-                            "edit_mask_list"
-                        ] = [
-                            mm
-                            for mm in st.session_state[
-                                "edit_mask_list"
-                            ]
-                            if mm["uid"] != uid
-                        ]
-
-                        st.rerun()
-
-            if any(
-                mm["style"] == "Blur"
-                for mm in st.session_state[
-                    "edit_mask_list"
-                ]
-            ):
-
-                edit_mask_blur = (
-                    st.slider(
-                        "Mask blur strength",
-                        1,
-                        10,
-                        5,
-                    )
-                    * 5
-                )
-
-            src_w = media_info["width"]
-            src_h = media_info["height"]
-
-            for mm in st.session_state[
-                "edit_mask_list"
-            ]:
-
-                edit_masks.append(
-                    {
-                        "x": int(
-                            src_w * mm["x"] / 100
-                        ),
-                        "y": int(
-                            src_h * mm["y"] / 100
-                        ),
-                        "w": int(
-                            src_w * mm["w"] / 100
-                        ),
-                        "h": int(
-                            src_h * mm["h"] / 100
-                        ),
-                        "mode": (
-                            "blur"
-                            if mm["style"]
-                            == "Blur"
-                            else "black"
-                        ),
-                    }
-                )
-
-        st.subheader(
-            "Copyright-safe transforms"
-        )
-
-        flip_enabled = st.checkbox(
-            "Flip video horizontally",
-            value=True,
-        )
-
-        zoom_choice = st.selectbox(
-            "Zoom",
-            [
-                "Off",
-                "Static zoom",
-                "Slow push-in (dynamic)",
-            ],
-            index=1,
-        )
-
-        zoom_amount = 1.10
-        zoom_cx = 50.0
-        zoom_cy = 50.0
-
-        if zoom_choice == "Static zoom":
-
-            zoom_amount = st.slider(
-                "Zoom amount",
-                1.00,
-                1.30,
-                1.10,
-                0.05,
-            )
-
-            zc1, zc2 = st.columns(2)
-
-            zoom_cx = float(
-                zc1.slider(
-                    "Zoom center X (%)",
-                    0,
-                    100,
-                    50,
-                    help=(
-                        "0 = left edge, "
-                        "50 = center, "
-                        "100 = right edge"
-                    ),
-                )
-            )
-
-            zoom_cy = float(
-                zc2.slider(
-                    "Zoom center Y (%)",
-                    0,
-                    100,
-                    50,
-                    help=(
-                        "0 = top edge, "
-                        "50 = center, "
-                        "100 = bottom edge"
-                    ),
-                )
-            )
-
-        eq_choice = st.selectbox(
-            "Color filter",
-            [
-                "None",
-                "Vivid",
-                "Warm",
-                "Cool",
-                "High contrast",
-            ],
-            index=1,
-        )
-
-        st.subheader("Subtitles")
-
-        sub_font = find_myanmar_font()
-
-        if not sub_font:
-
-            st.warning(
-                "No Myanmar font found on this server — "
-                "burned subtitles may show as boxes. "
-                "Install a Myanmar font (e.g. Noto Sans Myanmar) "
-                "to fix it."
-            )
-
-            sub_font = "sans-serif"
-
-        burn_subs = st.checkbox(
-            "Burn subtitles into the video",
-            value=edit_srt_available,
-        )
-
-        sub_size = st.slider(
-            "Subtitle size",
-            12,
-            64,
-            28,
-        )
-
-        sub_position = st.slider(
-            "Subtitle vertical position (%)",
-            5,
-            95,
-            88,
-            help=(
-                "0 = top of the screen, "
-                "100 = bottom"
-            ),
-        )
-
-        sub_color = st.selectbox(
-            "Subtitle color",
-            [
-                "Bright green",
-                "White",
-                "Yellow",
-                "Cyan",
-            ],
-            index=0,
-        )
-
-        st.subheader("Aspect ratio")
-
-        out_ratio = st.selectbox(
-            "Output ratio",
-            [
-                "Original",
-                "9:16 vertical (blur background)",
-                "9:16 vertical (crop)",
-                "1:1 square (blur background)",
-            ],
-        )
-
-        bg_blur = 0
-
-        if "blur background" in out_ratio:
-
-            bg_blur = (
-                st.slider(
-                    "Background blur strength",
-                    1,
-                    10,
-                    6,
-                )
-                * 5
-            )
-
-        st.subheader("Background music")
-
-        bgm_enabled = st.checkbox(
-            "Add background music under the voiceover",
-            value=False,
-        )
-
-        edit_bgm_path = None
-        bgm_volume = 0.15
-
-        if bgm_enabled:
-
-            bgm_upload = st.file_uploader(
-                "Music file",
-                type=[
-                    "mp3",
-                    "wav",
-                    "m4a",
-                    "aac",
-                ],
-                key="edit_bgm",
-            )
-
-            if bgm_upload:
-
-                edit_bgm_path = (
-                    EDIT_WORK_DIR
-                    / (
-                        "edit_bgm"
-                        + (
-                            Path(
-                                bgm_upload.name
-                            ).suffix
-                            or ".mp3"
-                        )
-                    )
-                )
-
-                edit_bgm_path.write_bytes(
-                    bgm_upload.getbuffer()
-                )
-
-            bgm_volume = (
-                st.slider(
-                    "Music volume",
-                    5,
-                    30,
-                    15,
-                )
-                / 100.0
-            )
-
-        st.subheader("Intro / outro cards")
-
-        st.caption(
-            "Leave empty to skip. Text is centered on "
-            "a black card with a bright-green title."
-        )
-
-        intro_text = st.text_input(
-            "Intro card text",
-            value="",
-        )
-
-        outro_text = st.text_input(
-            "Outro card text",
-            value="",
-        )
-
-        card_duration = float(
-            st.slider(
-                "Card duration (seconds)",
-                1,
-                5,
-                2,
-            )
-        )
-
-        st.subheader("Auto-split")
-
-        split_enabled = st.checkbox(
-            "Split long videos into parts",
-            value=True,
-        )
-
-        split_part_len = 120.0
-
-        if split_enabled:
-
-            split_part_len = float(
-                st.slider(
-                    "Part length (seconds)",
-                    60,
-                    300,
-                    120,
-                    10,
-                )
-            )
-
-
-with c_prev:
-
-    st.subheader("Live preview")
-
-    if media_info:
-
-        preview_time = st.slider(
-            "Timestamp (seconds)",
-            0.0,
-            max(
-                1.0,
-                media_info["duration"],
-            ),
-            min(
-                30.0,
-                media_info["duration"] * 0.3,
-            ),
-            key="edit_preview_time",
-        )
-
         try:
 
-            preview_filter = (
-                build_edit_video_filter(
-                    edit_masks,
-                    edit_mask_blur,
-                    burn_subs
-                    and edit_srt_available,
-                    edit_srt_path,
-                    sub_font,
-                    sub_size,
-                    sub_position,
-                    sub_color,
-                    out_ratio,
-                    bg_blur,
-                    flip=flip_enabled,
-                    zoom_mode=(
-                        "static"
-                        if zoom_choice
-                        == "Static zoom"
-                        else (
-                            "dynamic"
-                            if zoom_choice
-                            == "Slow push-in (dynamic)"
-                            else "off"
+            with tempfile.TemporaryDirectory() as temp_dir:
+
+                work = Path(temp_dir)
+
+                video_path = (
+                    work
+                    / "input_video"
+                )
+
+                audio_path = (
+                    work
+                    / "audio.wav"
+                )
+
+                save_uploaded_file(
+                    video_file,
+                    video_path,
+                )
+
+                # Optional speed-up BEFORE transcription so that
+                # SRT timestamps + voiceover slots are all timed
+                # to the sped-up video (nothing goes out of sync).
+
+                if speed_factor > 1.001:
+
+                    sped_path = (
+                        work
+                        / "input_video_sped.mp4"
+                    )
+
+                    speed_result = run_cmd(
+                        [
+                            FFMPEG,
+                            "-y",
+                            "-hide_banner",
+                            "-loglevel",
+                            "error",
+                            "-i",
+                            str(video_path),
+                            "-vf",
+                            (
+                                "setpts="
+                                f"PTS/{speed_factor:.3f}"
+                            ),
+                            "-af",
+                            (
+                                "atempo="
+                                f"{speed_factor:.3f}"
+                            ),
+                            "-c:v",
+                            "libx264",
+                            "-preset",
+                            "veryfast",
+                            "-crf",
+                            "20",
+                            "-c:a",
+                            "aac",
+                            str(sped_path),
+                        ],
+                        timeout=1800,
+                    )
+
+                    if (
+                        speed_result.returncode != 0
+                        or not sped_path.exists()
+                    ):
+
+                        raise RuntimeError(
+                            "Speed-up failed.\n"
+                            + (
+                                speed_result.stderr
+                                or ""
+                            )[-1000:]
                         )
-                    ),
-                    zoom_amount=zoom_amount,
-                    zoom_cx=zoom_cx,
-                    zoom_cy=zoom_cy,
-                    eq_preset=eq_choice,
-                    src_w=media_info["width"],
-                    src_h=media_info["height"],
-                    src_fps=media_info.get(
-                        "fps", 30.0
-                    ),
+
+                    video_path = sped_path
+
+                # Keep a persistent copy for the Edit step
+                # (the temp dir above is deleted afterwards).
+
+                persist_video = (
+                    EDIT_WORK_DIR
+                    / (
+                        "step1_video"
+                        + (
+                            Path(
+                                video_file.name
+                            ).suffix
+                            or ".mp4"
+                        )
+                    )
                 )
-            )
 
-            try:
+                # Persist the PROCESSED video (after optional
+                # speed-up), not the raw upload — the SRT timings
+                # and voiceover slots are timed to this file, so
+                # the Edit step must use the same one.
 
-                video_stat = (
-                    edit_video_path.stat()
+                shutil.copy(
+                    video_path,
+                    persist_video,
                 )
 
-                cache_key = "|".join(
-                    [
-                        preview_filter,
-                        f"{preview_time:.2f}",
-                        str(video_stat.st_size),
-                        str(
-                            int(
-                                video_stat.st_mtime
-                            )
+                st.session_state.step1_video_path = str(
+                    persist_video
+                )
+
+                ring = RingProgress(
+                    "📝 မြန်မာ SRT ထုတ်နေသည်"
+                )
+
+                ring.update(
+                    0.05,
+                    "🎧 Audio ထုတ်နေသည်...",
+                )
+
+                extract_audio(
+                    video_path,
+                    audio_path,
+                )
+
+                ring.update(
+                    0.12,
+                    "🎙️ Dialogue timestamp ရယူနေသည်...",
+                )
+
+                (
+                    source_segments,
+                    detected_language,
+                ) = deepgram_transcribe(
+                    audio_path
+                )
+
+                ring.update(
+                    0.25,
+                    "🤖 "
+                    f"မူရင်းဘာသာစကား: "
+                    f"{detected_language} — "
+                    "မြန်မာလို ဘာသာပြန်နေသည်...",
+                )
+
+                translated_segments = (
+                    build_srt_segments(
+                        None,
+                        source_segments,
+                        lambda p, text: ring.update(
+                            min(p, 0.98),
+                            text,
                         ),
-                    ]
+                        TRANSLATION_STYLES[
+                            selected_translation_style
+                        ],
+                        detected_language,
+                    )
                 )
 
-            except OSError:
-
-                cache_key = None
-
-            preview_path = (
-                EDIT_WORK_DIR
-                / "preview.jpg"
-            )
-
-            if cache_key and (
-                st.session_state.get(
-                    "edit_preview_key"
-                )
-                != cache_key
-                or not preview_path.exists()
-            ):
-
-                preview_result = run_cmd(
-                    [
-                        FFMPEG,
-                        "-y",
-                        "-hide_banner",
-                        "-loglevel",
-                        "error",
-                        "-ss",
-                        f"{preview_time:.2f}",
-                        "-i",
-                        str(edit_video_path),
-                        "-vframes",
-                        "1",
-                        "-vf",
-                        preview_filter,
-                        str(preview_path),
-                    ],
-                    timeout=120,
+                srt_text = make_srt(
+                    translated_segments
                 )
 
-                if (
-                    preview_result.returncode
-                    == 0
-                    and preview_path.exists()
+                st.session_state.srt_text = (
+                    srt_text
+                )
+
+                st.session_state.srt_name = (
+                    safe_filename(
+                        srt_output_name,
+                        "myanmar.srt",
+                    )
+                )
+
+                if not (
+                    st.session_state
+                    .srt_name
+                    .lower()
+                    .endswith(".srt")
                 ):
 
-                    st.session_state[
-                        "edit_preview_key"
-                    ] = cache_key
-
-                else:
-
-                    preview_path.unlink(
-                        missing_ok=True
+                    st.session_state.srt_name += (
+                        ".srt"
                     )
 
-                    st.error(
-                        "Preview failed: "
-                        + (
-                            preview_result.stderr
-                            or ""
-                        )[:300]
-                    )
-
-                    st.session_state[
-                        "edit_preview_key"
-                    ] = cache_key
-
-            if preview_path.exists():
-
-                st.image(
-                    str(preview_path),
-                    caption=(
-                        "Live preview at "
-                        f"{preview_time:.1f}s"
-                    ),
+                ring.done(
+                    "✅ SRT ပြီးပါပြီ — "
+                    f"{len(translated_segments)} "
+                    "subtitle lines"
                 )
 
         except Exception as exc:
 
             st.error(
-                "Preview failed."
+                "SRT ထုတ်ရာမှာ အမှားဖြစ်ပါတယ်။"
             )
 
             st.exception(exc)
 
-    else:
 
-        st.info(
-            "Choose a video first — "
-            "every change then updates "
-            "this preview instantly, "
-            "no button needed."
+    if st.session_state.srt_text:
+
+        st.markdown(
+            '<div class="srt-title">'
+            '📄 Myanmar SRT Preview'
+            '</div>',
+            unsafe_allow_html=True,
         )
 
-    output_name = st.text_input(
-        "Output filename",
-        value="edited_video.mp4",
-    )
-
-    render_button = st.button(
-        "Render final video",
-        type="primary",
-        use_container_width=True,
-    )
-
-    if render_button:
-
-        file_name = safe_filename(
-            output_name.strip(),
-            "edited_video.mp4",
+        st.text_area(
+            "SRT",
+            value=st.session_state.srt_text,
+            height=300,
+            label_visibility="collapsed",
         )
 
-        if not file_name.lower().endswith(
-            ".mp4"
-        ):
+        st.download_button(
+            "⬇️ Download Myanmar SRT",
+            data=(
+                st.session_state
+                .srt_text
+                .encode("utf-8-sig")
+            ),
+            file_name=(
+                st.session_state
+                .srt_name
+            ),
+            mime="application/x-subrip",
+            use_container_width=True,
+        )
 
-            file_name += ".mp4"
+
+    # ============================================================
+# STEP 2
+# ============================================================
+
+if app_mode == "voice":
+
+    st.markdown("---")
+
+    st.markdown(
+        '<div class="section-title">'
+        '② SRT → မြန်မာ Voiceover'
+        '</div>',
+        unsafe_allow_html=True,
+    )
+
+    srt_file = st.file_uploader(
+        "📄 SRT ဖိုင်တင်ပါ",
+        type=["srt"],
+        key="voice_srt",
+    )
+
+    with st.expander(
+        "⚙️ ဆက်တင်",
+        expanded=False,
+    ):
+
+        col1, col2 = st.columns(2)
+
+        with col1:
+
+            selected_voice = (
+                exclusive_checkboxes(
+                    "🎙️ Voice",
+                    list(VOICES.keys()),
+                    "s2_voice",
+                    0,
+                )
+            )
+
+        with col2:
+
+            selected_style = (
+                exclusive_checkboxes(
+                    "🎭 Voice Style",
+                    list(
+                        VOICE_STYLES.keys()
+                    ),
+                    "s2_style",
+                    0,
+                )
+            )
+
+        selected_speed = st.slider(
+            "⚡ Speed",
+            0.70,
+            1.30,
+            1.00,
+            0.05,
+        )
+
+    with st.form(
+        "voice_form",
+        clear_on_submit=False,
+    ):
+
+        output_filename = st.text_input(
+            "💾 Voiceover filename",
+            value=(
+                "myanmar_voiceover.m4a"
+            ),
+        )
+
+        make_voice_button = (
+            st.form_submit_button(
+                "🗣️ Voiceover ထုတ်မယ်",
+                type="primary",
+                use_container_width=True,
+            )
+        )
+
+
+    if make_voice_button:
+
+        source_srt = None
+
+        if srt_file:
+
+            source_srt = (
+                srt_file
+                .getvalue()
+                .decode(
+                    "utf-8-sig",
+                    errors="replace",
+                )
+            )
+
+        elif st.session_state.srt_text:
+
+            source_srt = (
+                st.session_state.srt_text
+            )
+
+        if not source_srt:
+
+            st.error(
+                "SRT ဖိုင်တင်ပါ "
+                "(သို့) အဆင့် ၁ မှာ SRT အရင်ထုတ်ပါ။"
+            )
+
+            st.stop()
 
         try:
 
-            with st.spinner(
-                "Rendering video... "
-                "this can take a few minutes."
-            ):
+            segments, fixed_count = (
+                parse_srt(
+                    source_srt
+                )
+            )
 
-                final_path = (
-                    render_edited_video(
-                        edit_video_path,
-                        edit_voice_path,
-                        keep_original=(
-                            original_choice
-                            == "Keep original audio"
-                            and media_info[
-                                "has_audio"
+            if fixed_count:
+
+                st.info(
+                    "⏱️ SRT timing ကို "
+                    "အလိုအလျောက်ပြင်ပြီးပါပြီ — "
+                    f"{fixed_count} ခု"
+                )
+
+            else:
+
+                st.success(
+                    "⏱️ SRT timing OK — "
+                    f"{len(segments)} lines"
+                )
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+
+                work = Path(temp_dir)
+
+                ring = RingProgress(
+                    "🗣️ Voiceover ထုတ်နေသည်"
+                )
+
+                (
+                    voice_path,
+                    segments,
+                    timing_report,
+                ) = build_voiceover(
+                    segments,
+                    VOICES[
+                        selected_voice
+                    ],
+                    selected_style,
+                    selected_speed,
+                    work,
+                    lambda p, text: ring.update(
+                        min(p, 1.0),
+                        text,
+                    ),
+                    gemini_client=(
+                        get_gemini_client(
+                            st.session_state.current_key_index
+                        )
+                    ),
+                )
+
+                ring.done(
+                    "✅ Voiceover ပြီးပါပြီ"
+                )
+
+                if timing_report["rewritten"]:
+
+                    # Keep the SRT in sync with the rewritten narration.
+                    st.session_state.srt_text = make_srt(
+                        segments
+                    )
+
+                    st.info(
+                        "AI rewrote "
+                        f"{timing_report['rewritten']} "
+                        "over-long lines shorter "
+                        "(complete sentences, meaning kept). "
+                        "The SRT above was updated to match."
+                    )
+
+                if timing_report["overflow"]:
+
+                    total_over = round(
+                        sum(
+                            sec
+                            for _, sec
+                            in timing_report[
+                                "overflow"
                             ]
                         ),
-                        orig_volume=(
-                            original_volume
-                        ),
-                        masks=edit_masks,
-                        mask_blur=(
-                            edit_mask_blur
-                        ),
-                        burn_subs=(
-                            burn_subs
-                            and edit_srt_available
-                        ),
-                        srt_path=(
-                            edit_srt_path
-                        ),
-                        sub_font=sub_font,
-                        sub_size=sub_size,
-                        sub_pos=(
-                            sub_position
-                        ),
-                        sub_color=sub_color,
-                        ratio=out_ratio,
-                        bg_blur=bg_blur,
-                        out_name=file_name,
+                        1,
+                    )
+
+                    st.warning(
+                        f"{len(timing_report['overflow'])} "
+                        "lines still run past their slots "
+                        f"({total_over}s total). They were kept "
+                        "at max 1.35x speed for intelligibility "
+                        "and extend slightly into the following "
+                        "pause instead of chipmunk audio."
+                    )
+
+                voice_bytes = (
+                    voice_path.read_bytes()
+                )
+
+                filename = safe_filename(
+                    output_filename,
+                    "myanmar_voiceover.m4a",
+                )
+
+                if not filename.lower().endswith(
+                    ".m4a"
+                ):
+
+                    filename += ".m4a"
+
+                st.session_state.voice_bytes = (
+                    voice_bytes
+                )
+
+                st.session_state.voice_name = (
+                    filename
+                )
+
+        except Exception as exc:
+
+            st.error(
+                "Voiceover ထုတ်ရာမှာ "
+                "အမှားဖြစ်ပါတယ်။"
+            )
+
+            st.exception(exc)
+
+
+    # ============================================================
+    # VOICE PREVIEW
+    # ============================================================
+
+    if st.session_state.voice_bytes:
+
+        st.markdown(
+            '<div class="srt-title">'
+            '🔊 Voiceover Preview'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+
+        st.audio(
+            st.session_state.voice_bytes,
+            format="audio/mp4",
+        )
+
+        st.download_button(
+            "⬇️ Download Voiceover",
+            data=(
+                st.session_state
+                .voice_bytes
+            ),
+            file_name=(
+                st.session_state
+                .voice_name
+            ),
+            mime="audio/mp4",
+            use_container_width=True,
+        )
+
+
+    # ============================================================
+# STEP 3 — EDIT & EXPORT
+# ============================================================
+
+if app_mode == "edit":
+
+    st.markdown("---")
+
+    st.markdown(
+        '<div class="section-title">'
+        "③ Edit &amp; Export"
+        "</div>",
+        unsafe_allow_html=True,
+    )
+
+    c_prev, c_ctrl = st.columns([1, 1.15])
+
+    with c_ctrl:
+        edit_video_file = st.file_uploader(
+            "Video file",
+            type=[
+                "mp4",
+                "mov",
+                "mkv",
+                "webm",
+            ],
+            key="edit_video",
+        )
+
+        use_step1_video = False
+
+        if (
+            st.session_state.step1_video_path
+            and Path(
+                st.session_state.step1_video_path
+            ).exists()
+        ):
+
+            use_step1_video = st.checkbox(
+                "Use the video from Step 1",
+                value=True,
+            )
+
+        edit_video_path = None
+
+        if use_step1_video:
+
+            edit_video_path = Path(
+                st.session_state.step1_video_path
+            )
+
+        elif edit_video_file:
+
+            edit_video_path = (
+                EDIT_WORK_DIR
+                / (
+                    "edit_video"
+                    + (
+                        Path(
+                            edit_video_file.name
+                        ).suffix
+                        or ".mp4"
+                    )
+                )
+            )
+
+            save_uploaded_file(
+                edit_video_file,
+                edit_video_path,
+            )
+
+        voiceover_choice = st.radio(
+            "Voiceover track",
+            [
+                "Use Step 2 voiceover",
+                "Upload audio file",
+                "None",
+            ],
+            horizontal=True,
+        )
+
+        edit_voice_path = None
+
+        if voiceover_choice == "Use Step 2 voiceover":
+
+            if st.session_state.voice_bytes:
+
+                edit_voice_path = (
+                    EDIT_WORK_DIR
+                    / "edit_voiceover.m4a"
+                )
+
+                edit_voice_path.write_bytes(
+                    st.session_state.voice_bytes
+                )
+
+            else:
+
+                st.info(
+                    "No Step 2 voiceover yet — "
+                    "generate one above or upload a file."
+                )
+
+        elif voiceover_choice == "Upload audio file":
+
+            voiceover_upload = st.file_uploader(
+                "Voiceover audio",
+                type=[
+                    "m4a",
+                    "mp3",
+                    "wav",
+                    "aac",
+                ],
+                key="edit_voiceover",
+            )
+
+            if voiceover_upload:
+
+                edit_voice_path = (
+                    EDIT_WORK_DIR
+                    / (
+                        "edit_voiceover_up"
+                        + (
+                            Path(
+                                voiceover_upload.name
+                            ).suffix
+                            or ".m4a"
+                        )
+                    )
+                )
+
+                edit_voice_path.write_bytes(
+                    voiceover_upload.getbuffer()
+                )
+
+        srt_choice = st.radio(
+            "Subtitle source",
+            [
+                "Use Step 1 SRT",
+                "Upload SRT file",
+                "None",
+            ],
+            horizontal=True,
+        )
+
+        edit_srt_path = None
+        edit_srt_available = False
+
+        if srt_choice == "Use Step 1 SRT":
+
+            if st.session_state.srt_text:
+
+                edit_srt_path = (
+                    EDIT_WORK_DIR
+                    / "edit_subs.srt"
+                )
+
+                edit_srt_path.write_text(
+                    st.session_state.srt_text,
+                    encoding="utf-8-sig",
+                )
+
+                edit_srt_available = True
+
+            else:
+
+                st.info("No Step 1 SRT yet.")
+
+        elif srt_choice == "Upload SRT file":
+
+            srt_upload = st.file_uploader(
+                "SRT file",
+                type=["srt"],
+                key="edit_srt",
+            )
+
+            if srt_upload:
+
+                edit_srt_path = (
+                    EDIT_WORK_DIR
+                    / "edit_subs_up.srt"
+                )
+
+                edit_srt_path.write_bytes(
+                    srt_upload.getvalue()
+                )
+
+                edit_srt_available = True
+
+        media_info = None
+        edit_masks = []
+        edit_mask_blur = 25
+        sub_font = "sans-serif"
+        burn_subs = False
+        sub_size = 28
+        sub_position = 88.0
+        sub_color = "Bright green"
+        out_ratio = "Original"
+        bg_blur = 0
+        flip_enabled = True
+        zoom_choice = "Static zoom"
+        zoom_amount = 1.10
+        zoom_cx = 50.0
+        zoom_cy = 50.0
+        eq_choice = "Vivid"
+        bgm_enabled = False
+        edit_bgm_path = None
+        bgm_volume = 0.15
+        intro_text = ""
+        outro_text = ""
+        card_duration = 2.0
+        split_enabled = True
+        split_part_len = 120.0
+
+        if (
+            edit_video_path is not None
+            and edit_video_path.exists()
+        ):
+
+            media_info = probe_media(
+                edit_video_path
+            )
+
+            if not media_info["has_video"]:
+
+                st.error(
+                    "No video stream found in the file."
+                )
+
+                st.stop()
+
+            st.caption(
+                f"{media_info['width']}x{media_info['height']} | "
+                f"{media_info['duration']:.1f}s | "
+                f"{'has audio' if media_info['has_audio'] else 'no audio'}"
+            )
+
+            with st.expander(
+                "🔊 Audio",
+                expanded=False,
+            ):
+
+                original_choice = st.radio(
+                    "Original video audio",
+                    [
+                        "Mute original audio",
+                        "Keep original audio",
+                    ],
+                    horizontal=True,
+                )
+
+                original_volume = 0.0
+
+                if (
+                    original_choice
+                    == "Keep original audio"
+                    and media_info["has_audio"]
+                ):
+
+                    original_volume = (
+                        st.slider(
+                            "Original audio volume",
+                            0,
+                            100,
+                            40,
+                        )
+                        / 100.0
+                    )
+
+            with st.expander(
+                "🎭 Mask hardcoded subtitles",
+                expanded=False,
+            ):
+
+                mask_enabled = st.checkbox(
+                    "Cover burned-in subtitles with a mask",
+                    value=False,
+                    key="mask_enabled_cb",
+                )
+
+                edit_masks = []
+                edit_mask_blur = 25
+
+                if "edit_mask_list" not in st.session_state:
+                    st.session_state["edit_mask_list"] = []
+
+                if "mask_canvas_epoch" not in st.session_state:
+                    st.session_state["mask_canvas_epoch"] = 0
+
+                if mask_enabled:
+
+                    st.markdown(
+                        '<div class="canvas-hint">'
+                        "▭ <b>+ Add mask</b> နှိပ်ရင် video ပေါ်မှာ "
+                        "လေးထောင့်ကွက် ပေါ်လာမယ် — "
+                        "အဲဒါကို <b>drag / resize</b> လုပ်ပြီး "
+                        "စိတ်ကြိုက်ချိန်နိုင်တယ်။"
+                        "</div>",
+                        unsafe_allow_html=True,
+                    )
+
+                    # ---- canvas background: one frame, 1:1 mapped ----
+                    canvas_h = 360
+                    src_w = media_info["width"]
+                    src_h = media_info["height"]
+                    canvas_w = max(
+                        160,
+                        int(canvas_h * src_w / max(src_h, 1)),
+                    )
+
+                    try:
+                        vid_size = Path(edit_video_path).stat().st_size
+                    except OSError:
+                        vid_size = 0
+
+                    vid_sig = f"{edit_video_path}::{vid_size}"
+                    canvas_bg_path = (
+                        EDIT_WORK_DIR / "mask_canvas_bg.jpg"
+                    )
+
+                    if (
+                        st.session_state.get("mask_bg_sig")
+                        != vid_sig
+                    ):
+                        canvas_bg_path.unlink(missing_ok=True)
+                        st.session_state["mask_bg_sig"] = vid_sig
+
+                    if not canvas_bg_path.exists():
+
+                        run_cmd(
+                            [
+                                FFMPEG, "-y", "-hide_banner",
+                                "-loglevel", "error",
+                                "-ss",
+                                f"{min(30.0, media_info['duration'] * 0.3):.1f}",
+                                "-i", str(edit_video_path),
+                                "-vframes", "1",
+                                "-vf",
+                                f"scale={canvas_w}:{canvas_h}",
+                                str(canvas_bg_path),
+                            ],
+                            timeout=120,
+                        )
+
+                    try:
+
+                        from streamlit_drawable_canvas import (
+                            st_canvas,
+                        )
+
+                        from PIL import Image
+
+                        canvas_available = True
+
+                    except Exception:
+
+                        canvas_available = False
+
+                    if canvas_available and canvas_bg_path.exists():
+
+                        bg_img = Image.open(
+                            canvas_bg_path
+                        ).convert("RGB")
+
+                        if bg_img.size != (canvas_w, canvas_h):
+
+                            bg_img = bg_img.resize(
+                                (canvas_w, canvas_h)
+                            )
+
+                        init_objects = []
+
+                        for mm in st.session_state[
+                            "edit_mask_list"
+                        ]:
+
+                            init_objects.append(
+                                {
+                                    "type": "rect",
+                                    "left": (
+                                        mm["x"] / 100 * canvas_w
+                                    ),
+                                    "top": (
+                                        mm["y"] / 100 * canvas_h
+                                    ),
+                                    "width": (
+                                        mm["w"] / 100 * canvas_w
+                                    ),
+                                    "height": (
+                                        mm["h"] / 100 * canvas_h
+                                    ),
+                                    "fill": (
+                                        "rgba(99,102,241,0.25)"
+                                    ),
+                                    "stroke": "#818cf8",
+                                    "strokeWidth": 2,
+                                }
+                            )
+
+                        c_add, c_clear = st.columns(2)
+
+                        if c_add.button(
+                            "+ Add mask",
+                            key="add_mask_btn",
+                            use_container_width=True,
+                        ):
+
+                            st.session_state[
+                                "edit_mask_list"
+                            ].append(
+                                {
+                                    "x": 10.0,
+                                    "y": 76.0,
+                                    "w": 80.0,
+                                    "h": 16.0,
+                                    "style": "Blur",
+                                }
+                            )
+
+                            st.session_state[
+                                "mask_canvas_epoch"
+                            ] += 1
+
+                            st.rerun()
+
+                        if c_clear.button(
+                            "Clear all",
+                            key="clear_mask_btn",
+                            use_container_width=True,
+                        ):
+
+                            st.session_state[
+                                "edit_mask_list"
+                            ] = []
+
+                            st.session_state[
+                                "mask_canvas_epoch"
+                            ] += 1
+
+                            st.rerun()
+
+                        canvas_result = st_canvas(
+                            fill_color=(
+                                "rgba(99,102,241,0.25)"
+                            ),
+                            stroke_width=2,
+                            stroke_color="#818cf8",
+                            background_image=bg_img,
+                            update_streamlit=True,
+                            height=canvas_h,
+                            width=canvas_w,
+                            drawing_mode="rect",
+                            display_toolbar=True,
+                            key=(
+                                "mask_canvas_"
+                                f"{st.session_state['mask_canvas_epoch']}"
+                            ),
+                            initial_drawing=(
+                                {
+                                    "version": "4.4.0",
+                                    "objects": init_objects,
+                                }
+                                if init_objects
+                                else None
+                            ),
+                        )
+
+                        # sync canvas rects -> mask list
+                        # (styles kept by position)
+                        if (
+                            canvas_result is not None
+                            and canvas_result.json_data
+                            is not None
+                        ):
+
+                            rects = [
+                                o
+                                for o in canvas_result.json_data[
+                                    "objects"
+                                ]
+                                if o.get("type") == "rect"
+                            ]
+
+                            old_list = st.session_state[
+                                "edit_mask_list"
+                            ]
+
+                            new_list = []
+
+                            for i, r in enumerate(
+                                rects
+                            ):
+
+                                style = (
+                                    old_list[i]["style"]
+                                    if i < len(old_list)
+                                    and old_list[i].get(
+                                        "style"
+                                    )
+                                    else "Blur"
+                                )
+
+                                new_list.append(
+                                    {
+                                        "x": max(
+                                            0.0,
+                                            min(
+                                                100.0,
+                                                r["left"]
+                                                / canvas_w
+                                                * 100,
+                                            ),
+                                        ),
+                                        "y": max(
+                                            0.0,
+                                            min(
+                                                100.0,
+                                                r["top"]
+                                                / canvas_h
+                                                * 100,
+                                            ),
+                                        ),
+                                        "w": max(
+                                            1.0,
+                                            min(
+                                                100.0,
+                                                r["width"]
+                                                / canvas_w
+                                                * 100,
+                                            ),
+                                        ),
+                                        "h": max(
+                                            1.0,
+                                            min(
+                                                100.0,
+                                                r["height"]
+                                                / canvas_h
+                                                * 100,
+                                            ),
+                                        ),
+                                        "style": style,
+                                    }
+                                )
+
+                            st.session_state[
+                                "edit_mask_list"
+                            ] = new_list
+
+                        # per-mask style + remove
+                        for pos, m in enumerate(
+                            st.session_state[
+                                "edit_mask_list"
+                            ]
+                        ):
+
+                            mc1, mc2 = st.columns(
+                                [1.2, 1]
+                            )
+
+                            m["style"] = mc1.radio(
+                                f"Mask {pos + 1} style",
+                                [
+                                    "Blur",
+                                    "Black box",
+                                ],
+                                index=(
+                                    0
+                                    if m["style"]
+                                    == "Blur"
+                                    else 1
+                                ),
+                                horizontal=True,
+                                key=(
+                                    "mk_style_"
+                                    f"{pos}_"
+                                    f"{st.session_state['mask_canvas_epoch']}"
+                                ),
+                            )
+
+                            if mc2.button(
+                                f"Remove mask {pos + 1}",
+                                key=(
+                                    "mk_rm_"
+                                    f"{pos}_"
+                                    f"{st.session_state['mask_canvas_epoch']}"
+                                ),
+                            ):
+
+                                st.session_state[
+                                    "edit_mask_list"
+                                ] = [
+                                    mm
+                                    for j, mm in enumerate(
+                                        st.session_state[
+                                            "edit_mask_list"
+                                        ]
+                                    )
+                                    if j != pos
+                                ]
+
+                                st.session_state[
+                                    "mask_canvas_epoch"
+                                ] += 1
+
+                                st.rerun()
+
+                        if any(
+                            mm["style"] == "Blur"
+                            for mm in st.session_state[
+                                "edit_mask_list"
+                            ]
+                        ):
+
+                            edit_mask_blur = (
+                                st.slider(
+                                    "Mask blur strength",
+                                    1,
+                                    10,
+                                    5,
+                                    key="mask_blur_slider",
+                                )
+                                * 5
+                            )
+
+                    else:
+
+                        st.warning(
+                            "Canvas editor မရပါ — "
+                            "streamlit-drawable-canvas "
+                            "လိုအပ်ပါတယ်။"
+                        )
+
+                    # pixel masks for the ffmpeg filter
+                    for mm in st.session_state[
+                        "edit_mask_list"
+                    ]:
+
+                        edit_masks.append(
+                            {
+                                "x": int(
+                                    src_w * mm["x"] / 100
+                                ),
+                                "y": int(
+                                    src_h * mm["y"] / 100
+                                ),
+                                "w": int(
+                                    src_w * mm["w"] / 100
+                                ),
+                                "h": int(
+                                    src_h * mm["h"] / 100
+                                ),
+                                "mode": (
+                                    "blur"
+                                    if mm["style"]
+                                    == "Blur"
+                                    else "black"
+                                ),
+                            }
+                        )
+
+
+            with st.expander(
+                "🔄 Copyright-safe transforms",
+                expanded=False,
+            ):
+
+                flip_enabled = st.checkbox(
+                    "Flip video horizontally",
+                    value=True,
+                )
+
+                zoom_choice = st.selectbox(
+                    "Zoom",
+                    [
+                        "Off",
+                        "Static zoom",
+                        "Slow push-in (dynamic)",
+                    ],
+                    index=1,
+                )
+
+                zoom_amount = 1.10
+                zoom_cx = 50.0
+                zoom_cy = 50.0
+
+                if zoom_choice == "Static zoom":
+
+                    zoom_amount = st.slider(
+                        "Zoom amount",
+                        1.00,
+                        1.30,
+                        1.10,
+                        0.05,
+                    )
+
+                    zc1, zc2 = st.columns(2)
+
+                    zoom_cx = float(
+                        zc1.slider(
+                            "Zoom center X (%)",
+                            0,
+                            100,
+                            50,
+                            help=(
+                                "0 = left edge, "
+                                "50 = center, "
+                                "100 = right edge"
+                            ),
+                        )
+                    )
+
+                    zoom_cy = float(
+                        zc2.slider(
+                            "Zoom center Y (%)",
+                            0,
+                            100,
+                            50,
+                            help=(
+                                "0 = top edge, "
+                                "50 = center, "
+                                "100 = bottom edge"
+                            ),
+                        )
+                    )
+
+                eq_choice = st.selectbox(
+                    "Color filter",
+                    [
+                        "None",
+                        "Vivid",
+                        "Warm",
+                        "Cool",
+                        "High contrast",
+                    ],
+                    index=1,
+                )
+
+            with st.expander(
+                "💬 Subtitles",
+                expanded=False,
+            ):
+
+                sub_font = find_myanmar_font()
+
+                if not sub_font:
+
+                    st.warning(
+                        "No Myanmar font found on this server — "
+                        "burned subtitles may show as boxes. "
+                        "Install a Myanmar font (e.g. Noto Sans Myanmar) "
+                        "to fix it."
+                    )
+
+                    sub_font = "sans-serif"
+
+                burn_subs = st.checkbox(
+                    "Burn subtitles into the video",
+                    value=edit_srt_available,
+                )
+
+                sub_size = st.slider(
+                    "Subtitle size",
+                    12,
+                    64,
+                    28,
+                )
+
+                sub_position = st.slider(
+                    "Subtitle vertical position (%)",
+                    5,
+                    95,
+                    88,
+                    help=(
+                        "0 = top of the screen, "
+                        "100 = bottom"
+                    ),
+                )
+
+                sub_color = st.selectbox(
+                    "Subtitle color",
+                    [
+                        "Bright green",
+                        "White",
+                        "Yellow",
+                        "Cyan",
+                    ],
+                    index=0,
+                )
+
+            with st.expander(
+                "📐 Aspect ratio",
+                expanded=False,
+            ):
+
+                out_ratio = st.selectbox(
+                    "Output ratio",
+                    [
+                        "Original",
+                        "9:16 vertical (blur background)",
+                        "9:16 vertical (crop)",
+                        "1:1 square (blur background)",
+                    ],
+                )
+
+                bg_blur = 0
+
+                if "blur background" in out_ratio:
+
+                    bg_blur = (
+                        st.slider(
+                            "Background blur strength",
+                            1,
+                            10,
+                            6,
+                        )
+                        * 5
+                    )
+
+            with st.expander(
+                "🎵 Background music",
+                expanded=False,
+            ):
+
+                bgm_enabled = st.checkbox(
+                    "Add background music under the voiceover",
+                    value=False,
+                )
+
+                edit_bgm_path = None
+                bgm_volume = 0.15
+
+                if bgm_enabled:
+
+                    bgm_upload = st.file_uploader(
+                        "Music file",
+                        type=[
+                            "mp3",
+                            "wav",
+                            "m4a",
+                            "aac",
+                        ],
+                        key="edit_bgm",
+                    )
+
+                    if bgm_upload:
+
+                        edit_bgm_path = (
+                            EDIT_WORK_DIR
+                            / (
+                                "edit_bgm"
+                                + (
+                                    Path(
+                                        bgm_upload.name
+                                    ).suffix
+                                    or ".mp3"
+                                )
+                            )
+                        )
+
+                        edit_bgm_path.write_bytes(
+                            bgm_upload.getbuffer()
+                        )
+
+                    bgm_volume = (
+                        st.slider(
+                            "Music volume",
+                            5,
+                            30,
+                            15,
+                        )
+                        / 100.0
+                    )
+
+            with st.expander(
+                "🃏 Intro / outro cards",
+                expanded=False,
+            ):
+
+                st.caption(
+                    "Leave empty to skip. Text is centered on "
+                    "a black card with a bright-green title."
+                )
+
+                intro_text = st.text_input(
+                    "Intro card text",
+                    value="",
+                )
+
+                outro_text = st.text_input(
+                    "Outro card text",
+                    value="",
+                )
+
+                card_duration = float(
+                    st.slider(
+                        "Card duration (seconds)",
+                        1,
+                        5,
+                        2,
+                    )
+                )
+
+            with st.expander(
+                "✂️ Auto-split",
+                expanded=False,
+            ):
+
+                split_enabled = st.checkbox(
+                    "Split long videos into parts",
+                    value=True,
+                )
+
+                split_part_len = 120.0
+
+                if split_enabled:
+
+                    split_part_len = float(
+                        st.slider(
+                            "Part length (seconds)",
+                            60,
+                            300,
+                            120,
+                            10,
+                        )
+                    )
+
+
+    with c_prev:
+
+        st.subheader("Live preview")
+
+        if media_info:
+
+            preview_time = st.slider(
+                "Timestamp (seconds)",
+                0.0,
+                max(
+                    1.0,
+                    media_info["duration"],
+                ),
+                min(
+                    30.0,
+                    media_info["duration"] * 0.3,
+                ),
+                key="edit_preview_time",
+            )
+
+            try:
+
+                preview_filter = (
+                    build_edit_video_filter(
+                        edit_masks,
+                        edit_mask_blur,
+                        burn_subs
+                        and edit_srt_available,
+                        edit_srt_path,
+                        sub_font,
+                        sub_size,
+                        sub_position,
+                        sub_color,
+                        out_ratio,
+                        bg_blur,
                         flip=flip_enabled,
                         zoom_mode=(
                             "static"
@@ -5492,10 +5673,7 @@ with c_prev:
                             else (
                                 "dynamic"
                                 if zoom_choice
-                                == (
-                                    "Slow push-in "
-                                    "(dynamic)"
-                                )
+                                == "Slow push-in (dynamic)"
                                 else "off"
                             )
                         ),
@@ -5503,108 +5681,311 @@ with c_prev:
                         zoom_cx=zoom_cx,
                         zoom_cy=zoom_cy,
                         eq_preset=eq_choice,
-                        bgm_path=(
-                            edit_bgm_path
-                            if bgm_enabled
-                            else None
-                        ),
-                        bgm_volume=bgm_volume,
-                        intro_text=intro_text,
-                        outro_text=outro_text,
-                        card_duration=(
-                            card_duration
+                        src_w=media_info["width"],
+                        src_h=media_info["height"],
+                        src_fps=media_info.get(
+                            "fps", 30.0
                         ),
                     )
                 )
 
-            final_info = probe_media(
-                final_path
+                try:
+
+                    video_stat = (
+                        edit_video_path.stat()
+                    )
+
+                    cache_key = "|".join(
+                        [
+                            preview_filter,
+                            f"{preview_time:.2f}",
+                            str(video_stat.st_size),
+                            str(
+                                int(
+                                    video_stat.st_mtime
+                                )
+                            ),
+                        ]
+                    )
+
+                except OSError:
+
+                    cache_key = None
+
+                preview_path = (
+                    EDIT_WORK_DIR
+                    / "preview.jpg"
+                )
+
+                if cache_key and (
+                    st.session_state.get(
+                        "edit_preview_key"
+                    )
+                    != cache_key
+                    or not preview_path.exists()
+                ):
+
+                    preview_result = run_cmd(
+                        [
+                            FFMPEG,
+                            "-y",
+                            "-hide_banner",
+                            "-loglevel",
+                            "error",
+                            "-ss",
+                            f"{preview_time:.2f}",
+                            "-i",
+                            str(edit_video_path),
+                            "-vframes",
+                            "1",
+                            "-vf",
+                            preview_filter,
+                            str(preview_path),
+                        ],
+                        timeout=120,
+                    )
+
+                    if (
+                        preview_result.returncode
+                        == 0
+                        and preview_path.exists()
+                    ):
+
+                        st.session_state[
+                            "edit_preview_key"
+                        ] = cache_key
+
+                    else:
+
+                        preview_path.unlink(
+                            missing_ok=True
+                        )
+
+                        st.error(
+                            "Preview failed: "
+                            + (
+                                preview_result.stderr
+                                or ""
+                            )[:300]
+                        )
+
+                        st.session_state[
+                            "edit_preview_key"
+                        ] = cache_key
+
+                if preview_path.exists():
+
+                    st.image(
+                        str(preview_path),
+                        caption=(
+                            "Live preview at "
+                            f"{preview_time:.1f}s"
+                        ),
+                    )
+
+            except Exception as exc:
+
+                st.error(
+                    "Preview failed."
+                )
+
+                st.exception(exc)
+
+        else:
+
+            st.info(
+                "Choose a video first — "
+                "every change then updates "
+                "this preview instantly, "
+                "no button needed."
             )
 
-            do_split = (
-                split_enabled
-                and final_info["duration"]
-                > split_part_len
+        output_name = st.text_input(
+            "Output filename",
+            value="edited_video.mp4",
+        )
+
+        render_button = st.button(
+            "Render final video",
+            type="primary",
+            use_container_width=True,
+        )
+
+        if render_button:
+
+            file_name = safe_filename(
+                output_name.strip(),
+                "edited_video.mp4",
             )
 
-            if do_split:
+            if not file_name.lower().endswith(
+                ".mp4"
+            ):
+
+                file_name += ".mp4"
+
+            try:
 
                 with st.spinner(
-                    "Splitting into parts..."
+                    "Rendering video... "
+                    "this can take a few minutes."
                 ):
 
-                    parts = split_video_parts(
-                        final_path,
-                        split_part_len,
-                        file_name,
+                    final_path = (
+                        render_edited_video(
+                            edit_video_path,
+                            edit_voice_path,
+                            keep_original=(
+                                original_choice
+                                == "Keep original audio"
+                                and media_info[
+                                    "has_audio"
+                                ]
+                            ),
+                            orig_volume=(
+                                original_volume
+                            ),
+                            masks=edit_masks,
+                            mask_blur=(
+                                edit_mask_blur
+                            ),
+                            burn_subs=(
+                                burn_subs
+                                and edit_srt_available
+                            ),
+                            srt_path=(
+                                edit_srt_path
+                            ),
+                            sub_font=sub_font,
+                            sub_size=sub_size,
+                            sub_pos=(
+                                sub_position
+                            ),
+                            sub_color=sub_color,
+                            ratio=out_ratio,
+                            bg_blur=bg_blur,
+                            out_name=file_name,
+                            flip=flip_enabled,
+                            zoom_mode=(
+                                "static"
+                                if zoom_choice
+                                == "Static zoom"
+                                else (
+                                    "dynamic"
+                                    if zoom_choice
+                                    == (
+                                        "Slow push-in "
+                                        "(dynamic)"
+                                    )
+                                    else "off"
+                                )
+                            ),
+                            zoom_amount=zoom_amount,
+                            zoom_cx=zoom_cx,
+                            zoom_cy=zoom_cy,
+                            eq_preset=eq_choice,
+                            bgm_path=(
+                                edit_bgm_path
+                                if bgm_enabled
+                                else None
+                            ),
+                            bgm_volume=bgm_volume,
+                            intro_text=intro_text,
+                            outro_text=outro_text,
+                            card_duration=(
+                                card_duration
+                            ),
+                        )
                     )
 
-                if not parts:
-
-                    st.warning(
-                        "Split produced no parts — "
-                        "showing the full video."
-                    )
-
-                    do_split = False
-
-            if do_split:
-
-                st.success(
-                    f"Done — {len(parts)} parts."
+                final_info = probe_media(
+                    final_path
                 )
 
-                for idx, part in enumerate(
-                    parts
-                ):
-                    st.markdown(
-                        f"**အပိုင်း {idx + 1}**"
+                do_split = (
+                    split_enabled
+                    and final_info["duration"]
+                    > split_part_len
+                )
+
+                if do_split:
+
+                    with st.spinner(
+                        "Splitting into parts..."
+                    ):
+
+                        parts = split_video_parts(
+                            final_path,
+                            split_part_len,
+                            file_name,
+                        )
+
+                    if not parts:
+
+                        st.warning(
+                            "Split produced no parts — "
+                            "showing the full video."
+                        )
+
+                        do_split = False
+
+                if do_split:
+
+                    st.success(
+                        f"Done — {len(parts)} parts."
                     )
 
+                    for idx, part in enumerate(
+                        parts
+                    ):
+                        st.markdown(
+                            f"**အပိုင်း {idx + 1}**"
+                        )
+
+                        st.video(
+                            str(part)
+                        )
+
+                        st.download_button(
+                            f"Download part {idx + 1}",
+                            data=(
+                                part.read_bytes()
+                            ),
+                            file_name=(
+                                part.name
+                            ),
+                            mime="video/mp4",
+                            use_container_width=True,
+                            key=(
+                                f"dl_part_{idx}"
+                            ),
+                        )
+
+                else:
+
                     st.video(
-                        str(part)
+                        str(final_path)
                     )
 
                     st.download_button(
-                        f"Download part {idx + 1}",
+                        "Download final video",
                         data=(
-                            part.read_bytes()
+                            final_path.read_bytes()
                         ),
                         file_name=(
-                            part.name
+                            final_path.name
                         ),
                         mime="video/mp4",
                         use_container_width=True,
-                        key=(
-                            f"dl_part_{idx}"
-                        ),
                     )
 
-            else:
+            except Exception as exc:
 
-                st.video(
-                    str(final_path)
+                st.error(
+                    "Render failed."
                 )
 
-                st.download_button(
-                    "Download final video",
-                    data=(
-                        final_path.read_bytes()
-                    ),
-                    file_name=(
-                        final_path.name
-                    ),
-                    mime="video/mp4",
-                    use_container_width=True,
-                )
-
-        except Exception as exc:
-
-            st.error(
-                "Render failed."
-            )
-
-            st.exception(exc)
+                st.exception(exc)
 
 
 # ============================================================
