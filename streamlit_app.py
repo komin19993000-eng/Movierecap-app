@@ -6,7 +6,13 @@ import re
 import shutil
 import subprocess
 import tempfile
+import threading
 import time
+from concurrent.futures import (
+    FIRST_COMPLETED,
+    ThreadPoolExecutor,
+    wait,
+)
 from pathlib import Path
 
 import edge_tts
@@ -95,30 +101,9 @@ st.markdown(
 <style>
 
 .stApp {
-    background:
-        radial-gradient(
-            circle at 10% 5%,
-            rgba(255, 0, 128, 0.22),
-            transparent 28%
-        ),
-        radial-gradient(
-            circle at 90% 5%,
-            rgba(0, 220, 255, 0.22),
-            transparent 28%
-        ),
-        radial-gradient(
-            circle at 50% 95%,
-            rgba(130, 60, 255, 0.20),
-            transparent 32%
-        ),
-        linear-gradient(
-            135deg,
-            #f7fbff 0%,
-            #fff5fb 45%,
-            #f4f9ff 100%
-        );
+    background: #f1f5f9;
 
-    color: #000000;
+    color: #0f172a;
 }
 
 .block-container {
@@ -138,241 +123,248 @@ st.markdown(
 .stApp h4,
 .stApp h5,
 .stApp h6 {
-    color: #000000;
+    color: #0f172a;
 }
 
 .hero-box {
-    padding: 28px 24px;
-    margin-bottom: 26px;
-    border-radius: 26px;
+    padding: 26px 24px;
+    margin-bottom: 24px;
+    border-radius: 14px;
 
     background:
         linear-gradient(
             135deg,
-            #00e5ff 0%,
-            #6c3cff 45%,
-            #ff299c 100%
+            #1e293b 0%,
+            #334155 100%
         );
 
-    border: 3px solid #000000;
+    border: 1px solid #1e293b;
 
     box-shadow:
-        0 10px 0 #000000,
-        0 18px 35px rgba(110, 40, 180, 0.30);
+        0 4px 14px rgba(15, 23, 42, 0.18);
 
     text-align: center;
 }
 
 .hero-title {
     margin: 0;
-    color: #000000 !important;
-    font-size: clamp(30px, 7vw, 52px);
-    font-weight: 900;
-    letter-spacing: -1px;
+    color: #ffffff !important;
+    font-size: clamp(26px, 5vw, 40px);
+    font-weight: 800;
+    letter-spacing: -0.5px;
 }
 
 .hero-subtitle {
     margin-top: 8px;
-    color: #000000 !important;
-    font-size: 16px;
-    font-weight: 700;
+    color: #cbd5e1 !important;
+    font-size: 15px;
+    font-weight: 500;
 }
 
 .section-title {
-    margin-top: 28px;
+    margin-top: 26px;
     margin-bottom: 14px;
 
-    padding: 14px 18px;
+    padding: 12px 18px;
 
-    border-radius: 18px;
+    border-radius: 10px;
 
-    background:
-        linear-gradient(
-            90deg,
-            #00e5ff,
-            #7b3cff,
-            #ff299c
-        );
+    background: #1e293b;
 
-    border: 3px solid #000000;
+    border: 1px solid #1e293b;
 
-    box-shadow: 0 6px 0 #000000;
+    border-left: 5px solid #4f46e5;
 
-    color: #000000 !important;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
 
-    font-size: 25px;
-    font-weight: 900;
+    color: #ffffff !important;
+
+    font-size: 20px;
+    font-weight: 700;
 }
 
 div[data-baseweb="input"] > div,
 div[data-baseweb="textarea"] > div,
 div[data-baseweb="select"] > div {
     background: #ffffff !important;
-    border: 2px solid #000000 !important;
-    border-radius: 13px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 8px !important;
 }
 
 input,
 textarea {
-    color: #000000 !important;
+    color: #0f172a !important;
     background: #ffffff !important;
-    -webkit-text-fill-color: #000000 !important;
+    -webkit-text-fill-color: #0f172a !important;
 }
 
 textarea {
-    border-radius: 14px !important;
+    border-radius: 8px !important;
 }
 
 div[data-testid="stFileUploader"] {
-    background:
-        linear-gradient(
-            135deg,
-            rgba(0, 229, 255, 0.22),
-            rgba(255, 41, 156, 0.18)
-        );
+    background: #ffffff;
 
-    border: 3px solid #000000;
-    border-radius: 18px;
+    border: 1px dashed #94a3b8;
+    border-radius: 12px;
     padding: 10px;
 }
 
 div[data-testid="stFileUploader"] section {
     background: #ffffff !important;
-    border-radius: 13px !important;
+    border-radius: 8px !important;
 }
 
 div[data-testid="stFileUploader"] button {
-    color: #000000 !important;
+    color: #0f172a !important;
     background: #ffffff !important;
-    border: 2px solid #000000 !important;
+    border: 1px solid #cbd5e1 !important;
 }
 
 div[data-baseweb="select"] * {
-    color: #000000 !important;
+    color: #0f172a !important;
 }
 
 div.stButton > button,
 div[data-testid="stFormSubmitButton"] button,
 button[kind="primary"] {
 
-    min-height: 52px;
+    min-height: 48px;
 
-    color: #000000 !important;
+    color: #ffffff !important;
 
-    background:
-        linear-gradient(
-            90deg,
-            #00e5ff 0%,
-            #6c3cff 50%,
-            #ff299c 100%
-        ) !important;
+    background: #4f46e5 !important;
 
-    border: 3px solid #000000 !important;
+    border: 1px solid #4f46e5 !important;
 
-    border-radius: 15px !important;
+    border-radius: 10px !important;
 
-    font-size: 16px !important;
-    font-weight: 900 !important;
+    font-size: 15px !important;
+    font-weight: 700 !important;
 
-    box-shadow: 0 5px 0 #000000 !important;
+    box-shadow: 0 2px 6px rgba(79, 70, 229, 0.35) !important;
 
     transition: all 0.12s ease;
 }
 
 div.stButton > button:hover,
 div[data-testid="stFormSubmitButton"] button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 7px 0 #000000 !important;
+    background: #4338ca !important;
+    border-color: #4338ca !important;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 10px rgba(79, 70, 229, 0.40) !important;
 }
 
 div.stButton > button:active,
 div[data-testid="stFormSubmitButton"] button:active {
-    transform: translateY(3px);
-    box-shadow: 0 2px 0 #000000 !important;
+    transform: translateY(1px);
+    box-shadow: 0 1px 3px rgba(79, 70, 229, 0.30) !important;
 }
 
 div[data-testid="stDownloadButton"] button {
 
-    min-height: 52px;
+    min-height: 48px;
 
-    color: #000000 !important;
+    color: #ffffff !important;
 
-    background:
-        linear-gradient(
-            90deg,
-            #00e5ff,
-            #7b3cff,
-            #ff299c
-        ) !important;
+    background: #0f766e !important;
 
-    border: 3px solid #000000 !important;
+    border: 1px solid #0f766e !important;
 
-    border-radius: 15px !important;
+    border-radius: 10px !important;
 
-    font-size: 16px !important;
+    font-size: 15px !important;
 
-    font-weight: 900 !important;
+    font-weight: 700 !important;
 
-    box-shadow: 0 5px 0 #000000 !important;
+    box-shadow: 0 2px 6px rgba(15, 118, 110, 0.35) !important;
 }
 
 div[data-testid="stProgress"] > div {
-    background: #ffffff !important;
-    border: 2px solid #000000;
+    background: #e2e8f0 !important;
+    border: none;
     border-radius: 20px;
 }
 
 div[data-testid="stProgress"] div[role="progressbar"] {
-    background:
-        linear-gradient(
-            90deg,
-            #00e5ff,
-            #7b3cff,
-            #ff299c
-        ) !important;
+    background: #4f46e5 !important;
 }
 
 div[data-testid="stAlert"] {
-    border: 2px solid #000000 !important;
-    border-radius: 14px !important;
+    border: 1px solid #cbd5e1 !important;
+    border-radius: 10px !important;
 }
 
 div[data-testid="stAlert"] * {
-    color: #000000 !important;
+    color: #0f172a !important;
 }
 
 .srt-title {
     margin-top: 22px;
     margin-bottom: 12px;
 
-    color: #000000 !important;
+    color: #0f172a !important;
 
-    font-size: 25px;
-    font-weight: 900;
+    font-size: 20px;
+    font-weight: 700;
 }
 
 hr {
     border: 0 !important;
-    height: 5px !important;
+    height: 1px !important;
 
-    background:
-        linear-gradient(
-            90deg,
-            #00e5ff,
-            #7b3cff,
-            #ff299c
-        ) !important;
+    background: #cbd5e1 !important;
 
-    border-radius: 10px;
-    margin: 34px 0 !important;
+    border-radius: 0;
+    margin: 30px 0 !important;
 }
 
 .footer {
     text-align: center;
-    color: #000000 !important;
-    font-size: 13px;
-    font-weight: 700;
+    color: #64748b !important;
+    font-size: 12px;
+    font-weight: 500;
     padding-top: 14px;
+}
+
+/* Option cards for checkbox groups */
+.opt-card {
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+}
+
+.opt-card-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a !important;
+    margin-bottom: 6px;
+}
+
+/* Circular progress ring */
+.ring-wrap {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+    background: #ffffff;
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
+    padding: 16px 20px;
+    margin: 12px 0;
+}
+
+.ring-label {
+    font-size: 15px;
+    font-weight: 600;
+    color: #0f172a !important;
+}
+
+.ring-sub {
+    font-size: 12px;
+    color: #64748b !important;
+    margin-top: 4px;
 }
 
 </style>
@@ -401,6 +393,134 @@ st.markdown(
 # ============================================================
 # GENERAL HELPERS
 # ============================================================
+
+class RingProgress:
+    """Circular % progress ring for long operations.
+
+    Backed by st.empty() — update ONLY from the main thread.
+    Replaces st.progress + status text so the user always sees
+    exactly how far the job has gone.
+    """
+
+    def __init__(self, label):
+
+        self._slot = st.empty()
+        self._label = label
+        self.update(0.0, "စတင်နေသည်...")
+
+    def update(self, percent, sub=""):
+
+        pct = max(
+            0.0,
+            min(1.0, float(percent)),
+        )
+
+        shown = int(
+            round(pct * 100)
+        )
+
+        radius = 54
+        circ = (
+            2 * 3.14159265 * radius
+        )
+        filled = pct * circ
+
+        self._slot.markdown(
+            f"""
+<div class="ring-wrap">
+  <svg width="84" height="84"
+       viewBox="0 0 120 120">
+    <circle cx="60" cy="60" r="{radius}"
+            fill="none" stroke="#e2e8f0"
+            stroke-width="12"/>
+    <circle cx="60" cy="60" r="{radius}"
+            fill="none" stroke="#4f46e5"
+            stroke-width="12"
+            stroke-linecap="round"
+            stroke-dasharray="{filled:.1f} {circ:.1f}"
+            transform="rotate(-90 60 60)"/>
+    <text x="60" y="68"
+          text-anchor="middle"
+          font-size="24" font-weight="700"
+          fill="#0f172a">{shown}%</text>
+  </svg>
+  <div>
+    <div class="ring-label">{self._label}</div>
+    <div class="ring-sub">{sub}</div>
+  </div>
+</div>
+""",
+            unsafe_allow_html=True,
+        )
+
+    def done(self, sub="✅ ပြီးပါပြီ"):
+
+        self.update(1.0, sub)
+
+
+def exclusive_checkboxes(
+    label,
+    options,
+    key_prefix,
+    default_index=0,
+):
+    """Checkbox group where only ONE can stay checked.
+
+    Looks like checkboxes (jo's request — dropdown text lists
+    were confusing) but behaves like a radio group: checking
+    one unchecks the others.
+    """
+
+    st.markdown(
+        f'<div class="opt-card-title">'
+        f"{label}</div>",
+        unsafe_allow_html=True,
+    )
+
+    def _exclusive(changed_key):
+
+        for opt in options:
+
+            key = (
+                f"{key_prefix}__{opt}"
+            )
+
+            if key != changed_key:
+
+                st.session_state[key] = (
+                    False
+                )
+
+    for opt in options:
+
+        key = (
+            f"{key_prefix}__{opt}"
+        )
+
+        if key not in st.session_state:
+
+            st.session_state[key] = (
+                options.index(opt)
+                == default_index
+            )
+
+        st.checkbox(
+            opt,
+            key=key,
+            on_change=_exclusive,
+            args=(key,),
+        )
+
+    for opt in options:
+
+        if st.session_state.get(
+            f"{key_prefix}__{opt}"
+        ):
+
+            return opt
+
+    return options[default_index]
+
 
 def get_secret(name: str) -> str:
     try:
@@ -706,11 +826,17 @@ def shorten_burmese_text(
 
 
 def translate_batch(
-    client_ignored,
+    key_index,
     rows,
     translation_style="original",
     detected_language="auto",
 ):
+    """Translate one batch of rows.
+
+    Thread-safe: the API key index is passed explicitly and
+    rotated in a local variable — never touches
+    st.session_state, so worker threads can call this.
+    """
 
     payload = [
         {
@@ -800,13 +926,10 @@ INPUT:
     model = get_gemini_model()
     keys = get_gemini_keys()
 
-    if (
-        "current_key_index"
-        not in st.session_state
-    ):
-        st.session_state.current_key_index = 0
-
     total_keys = len(keys)
+
+    # Local key rotation (thread-safe — no session_state).
+    local_key_index = int(key_index) % total_keys
 
     attempts = 0
 
@@ -821,7 +944,7 @@ INPUT:
     while attempts < max_attempts:
 
         current_idx = (
-            st.session_state.current_key_index
+            local_key_index
             % total_keys
         )
 
@@ -967,9 +1090,9 @@ INPUT:
                 and total_keys > 1
             ):
 
-                st.session_state.current_key_index = (
+                local_key_index = (
                     (
-                        st.session_state.current_key_index
+                        local_key_index
                         + 1
                     )
                     % total_keys
@@ -1191,7 +1314,9 @@ def deepgram_transcribe(
         "punctuate": "true",
         "smart_format": "true",
         "utterances": "true",
-        "diarize": "true",
+        # NOTE: diarize intentionally OFF — the speaker labels
+        # are never used downstream and diarization roughly
+        # doubles Deepgram latency.
         "words": "true",
     }
 
@@ -1494,27 +1619,114 @@ def build_srt_segments(
 
     result = []
 
-    batch_size = 10
+    # Batches of 20 → fewer API round-trips than 10.
+    batch_size = 20
     total = len(rows)
 
-    for pos in range(
-        0,
-        total,
-        batch_size,
+    batches = [
+        rows[pos:pos + batch_size]
+        for pos in range(
+            0,
+            total,
+            batch_size,
+        )
+    ]
+
+    num_batches = len(batches)
+
+    keys = get_gemini_keys()
+
+    # Parallel batches — each worker thread uses its own API
+    # key (round-robin), so multiple keys share the RPM load
+    # instead of one key handling every batch serially.
+    max_workers = min(
+        num_batches,
+        len(keys),
+        4,
+    )
+
+    translated_batches = [None] * num_batches
+    done_lines = 0
+    state_lock = threading.Lock()
+
+    def _translate_one(batch_pos):
+
+        batch_key_index = (
+            batch_pos % len(keys)
+        )
+
+        return translate_batch(
+            batch_key_index,
+            batches[batch_pos],
+            translation_style,
+            detected_language,
+        )
+
+    with ThreadPoolExecutor(
+        max_workers=max_workers
+    ) as pool:
+
+        pending = {
+            pool.submit(
+                _translate_one,
+                batch_pos,
+            ): batch_pos
+            for batch_pos in range(
+                num_batches
+            )
+        }
+
+        while pending:
+
+            finished, _ = wait(
+                pending,
+                return_when=FIRST_COMPLETED,
+            )
+
+            for future in finished:
+
+                batch_pos = pending.pop(
+                    future
+                )
+
+                # Raises here on the MAIN thread if the
+                # worker failed — st calls stay main-thread.
+                translated_batches[batch_pos] = (
+                    future.result()
+                )
+
+                with state_lock:
+
+                    done_lines += len(
+                        batches[batch_pos]
+                    )
+
+                    lines_now = done_lines
+
+            progress_callback(
+                min(
+                    0.95,
+                    0.25
+                    + 0.70
+                    * (
+                        lines_now
+                        / total
+                    ),
+                ),
+                (
+                    "ဘာသာပြန်ပြီးပါပြီ — "
+                    f"{lines_now}"
+                    f"/{total}"
+                ),
+            )
+
+    for batch_pos, batch in enumerate(
+        batches
     ):
 
-        batch = rows[
-            pos:pos + batch_size
+        translated = translated_batches[
+            batch_pos
         ]
-
-        translated = (
-            translate_batch(
-                client,
-                batch,
-                translation_style,
-                detected_language,
-            )
-        )
 
         for local_index, row in enumerate(
             batch,
@@ -1532,26 +1744,6 @@ def build_srt_segments(
                     "burmese": burmese,
                 }
             )
-
-        progress_callback(
-            min(
-                0.95,
-                0.25
-                + 0.70
-                * (
-                    (
-                        pos
-                        + len(batch)
-                    )
-                    / total
-                ),
-            ),
-            (
-                "ဘာသာပြန်ပြီးပါပြီ — "
-                f"{min(pos + len(batch), total)}"
-                f"/{total}"
-            ),
-        )
 
     return result
 
@@ -2071,6 +2263,99 @@ def build_voiceover(
     rewritten_count = 0
     overflow_lines = []
 
+    # ---- Phase 1: generate all raw TTS clips in parallel ----
+    # edge-tts calls are independent; 4 workers ≈ 3-4x faster
+    # than one-by-one. The fitting loop below reuses these
+    # files instead of regenerating them.
+
+    def _tts_one(idx_item):
+
+        idx, text = idx_item
+
+        out = (
+            work_dir
+            / f"tts_{idx:04d}.mp3"
+        )
+
+        if not (
+            out.exists()
+            and out.stat().st_size
+            > 1000
+        ):
+
+            make_tts(
+                text,
+                voice,
+                style,
+                out,
+            )
+
+        return idx
+
+    tts_jobs = [
+        (
+            index,
+            clean_text(
+                item["burmese"]
+            ),
+        )
+        for index, item in enumerate(
+            segments,
+            start=1,
+        )
+    ]
+
+    tts_done = 0
+    tts_lock = threading.Lock()
+
+    progress_callback(
+        0.05,
+        "Voice ထုတ်နေသည်... (parallel)",
+    )
+
+    with ThreadPoolExecutor(
+        max_workers=4
+    ) as tts_pool:
+
+        tts_pending = {
+            tts_pool.submit(
+                _tts_one,
+                job,
+            ): job[0]
+            for job in tts_jobs
+        }
+
+        while tts_pending:
+
+            finished, _ = wait(
+                tts_pending,
+                return_when=FIRST_COMPLETED,
+            )
+
+            for future in finished:
+
+                # Raises on the MAIN thread if a worker
+                # failed.
+                future.result()
+
+                del tts_pending[future]
+
+                with tts_lock:
+
+                    tts_done += 1
+
+                    now = tts_done
+
+            progress_callback(
+                0.05
+                + 0.45
+                * (now / total),
+                (
+                    f"Voice {now}/{total} "
+                    "ထုတ်နေသည်..."
+                ),
+            )
+
     for index, item in enumerate(
         segments,
         start=1,
@@ -2129,15 +2414,15 @@ def build_voiceover(
         )
 
         progress_callback(
-            0.05
-            + 0.75
+            0.50
+            + 0.30
             * (
                 (index - 1)
                 / total
             ),
             (
                 f"Voice {index}/{total} "
-                "ထုတ်နေသည်..."
+                "ချိန်ညှိနေသည်..."
             ),
         )
 
@@ -2145,12 +2430,20 @@ def build_voiceover(
             item["burmese"]
         )
 
-        make_tts(
-            text,
-            voice,
-            style,
-            raw,
-        )
+        # Phase 1 already generated this file in parallel;
+        # only generate here if it is missing/invalid.
+        if not (
+            raw.exists()
+            and raw.stat().st_size
+            > 1000
+        ):
+
+            make_tts(
+                text,
+                voice,
+                style,
+                raw,
+            )
 
         # If the narration cannot fit the slot at an
         # intelligible speed, try ONE proper AI rewrite
@@ -2169,8 +2462,8 @@ def build_voiceover(
         ):
 
             progress_callback(
-                0.05
-                + 0.75
+                0.50
+                + 0.30
                 * (index / total),
                 (
                     f"Line {index}/{total} "
@@ -3693,29 +3986,20 @@ video_file = st.file_uploader(
     key="source_video",
 )
 
-with st.form(
-    "srt_form",
-    clear_on_submit=False,
+with st.expander(
+    "⚙️ ဆက်တင်",
+    expanded=False,
 ):
 
-    srt_output_name = st.text_input(
-        "💾 SRT filename",
-        value=(
-            Path(
-                video_file.name
-            ).stem
-            + "_myanmar.srt"
+    selected_translation_style = (
+        exclusive_checkboxes(
+            "🎬 ဘာသာပြန်ပုံစံ",
+            list(
+                TRANSLATION_STYLES.keys()
+            ),
+            "s1_style",
+            0,
         )
-        if video_file
-        else "myanmar.srt",
-    )
-
-    selected_translation_style = st.selectbox(
-        "🎬 ဘာသာပြန်ပုံစံ",
-        list(
-            TRANSLATION_STYLES.keys()
-        ),
-        index=0,
     )
 
     speed_factor = st.slider(
@@ -3731,6 +4015,23 @@ with st.form(
             "so transcription, SRT and voiceover "
             "are all timed to the sped-up video."
         ),
+    )
+
+with st.form(
+    "srt_form",
+    clear_on_submit=False,
+):
+
+    srt_output_name = st.text_input(
+        "💾 SRT filename",
+        value=(
+            Path(
+                video_file.name
+            ).stem
+            + "_myanmar.srt"
+        )
+        if video_file
+        else "myanmar.srt",
     )
 
     make_srt_button = (
@@ -3861,13 +4162,13 @@ if make_srt_button:
                 persist_video
             )
 
-            status = st.empty()
-            progress = st.progress(
-                0.0
+            ring = RingProgress(
+                "📝 မြန်မာ SRT ထုတ်နေသည်"
             )
 
-            status.info(
-                "🎧 Audio ထုတ်နေသည်..."
+            ring.update(
+                0.05,
+                "🎧 Audio ထုတ်နေသည်...",
             )
 
             extract_audio(
@@ -3875,12 +4176,9 @@ if make_srt_button:
                 audio_path,
             )
 
-            progress.progress(
-                0.12
-            )
-
-            status.info(
-                "🎙️ Dialogue timestamp ရယူနေသည်..."
+            ring.update(
+                0.12,
+                "🎙️ Dialogue timestamp ရယူနေသည်...",
             )
 
             (
@@ -3890,30 +4188,21 @@ if make_srt_button:
                 audio_path
             )
 
-            progress.progress(
-                0.25
-            )
-
-            status.info(
+            ring.update(
+                0.25,
                 "🤖 "
                 f"မူရင်းဘာသာစကား: "
                 f"{detected_language} — "
-                "မြန်မာလို ဘာသာပြန်နေသည်..."
+                "မြန်မာလို ဘာသာပြန်နေသည်...",
             )
 
             translated_segments = (
                 build_srt_segments(
-                    get_gemini_client(
-                        st.session_state.current_key_index
-                    ),
+                    None,
                     source_segments,
-                    lambda p, text: (
-                        progress.progress(
-                            min(p, 0.98)
-                        ),
-                        status.info(
-                            text
-                        ),
+                    lambda p, text: ring.update(
+                        min(p, 0.98),
+                        text,
                     ),
                     TRANSLATION_STYLES[
                         selected_translation_style
@@ -3948,11 +4237,7 @@ if make_srt_button:
                     ".srt"
                 )
 
-            progress.progress(
-                1.0
-            )
-
-            status.success(
+            ring.done(
                 "✅ SRT ပြီးပါပြီ — "
                 f"{len(translated_segments)} "
                 "subtitle lines"
@@ -4018,49 +4303,56 @@ srt_file = st.file_uploader(
     key="voice_srt",
 )
 
-with st.form(
-    "voice_form",
-    clear_on_submit=False,
+with st.expander(
+    "⚙️ ဆက်တင်",
+    expanded=False,
 ):
 
     col1, col2 = st.columns(2)
 
     with col1:
 
-        selected_voice = st.selectbox(
-            "🎙️ Voice",
-            list(VOICES.keys()),
+        selected_voice = (
+            exclusive_checkboxes(
+                "🎙️ Voice",
+                list(VOICES.keys()),
+                "s2_voice",
+                0,
+            )
         )
 
     with col2:
 
-        selected_style = st.selectbox(
-            "🎭 Voice Style",
-            list(
-                VOICE_STYLES.keys()
-            ),
+        selected_style = (
+            exclusive_checkboxes(
+                "🎭 Voice Style",
+                list(
+                    VOICE_STYLES.keys()
+                ),
+                "s2_style",
+                0,
+            )
         )
 
-    col3, col4 = st.columns(2)
+    selected_speed = st.slider(
+        "⚡ Speed",
+        0.70,
+        1.30,
+        1.00,
+        0.05,
+    )
 
-    with col3:
+with st.form(
+    "voice_form",
+    clear_on_submit=False,
+):
 
-        selected_speed = st.slider(
-            "⚡ Speed",
-            0.70,
-            1.30,
-            1.00,
-            0.05,
-        )
-
-    with col4:
-
-        output_filename = st.text_input(
-            "💾 Voiceover filename",
-            value=(
-                "myanmar_voiceover.m4a"
-            ),
-        )
+    output_filename = st.text_input(
+        "💾 Voiceover filename",
+        value=(
+            "myanmar_voiceover.m4a"
+        ),
+    )
 
     make_voice_button = (
         st.form_submit_button(
@@ -4128,9 +4420,8 @@ if make_voice_button:
 
             work = Path(temp_dir)
 
-            status = st.empty()
-            progress = st.progress(
-                0.0
+            ring = RingProgress(
+                "🗣️ Voiceover ထုတ်နေသည်"
             )
 
             (
@@ -4145,19 +4436,19 @@ if make_voice_button:
                 selected_style,
                 selected_speed,
                 work,
-                lambda p, text: (
-                    progress.progress(
-                        min(p, 1.0)
-                    ),
-                    status.info(
-                        text
-                    ),
+                lambda p, text: ring.update(
+                    min(p, 1.0),
+                    text,
                 ),
                 gemini_client=(
                     get_gemini_client(
                         st.session_state.current_key_index
                     )
                 ),
+            )
+
+            ring.done(
+                "✅ Voiceover ပြီးပါပြီ"
             )
 
             if timing_report["rewritten"]:
@@ -4218,14 +4509,6 @@ if make_voice_button:
 
             st.session_state.voice_name = (
                 filename
-            )
-
-            progress.progress(
-                1.0
-            )
-
-            status.success(
-                "✅ Voiceover ပြီးပါပြီ"
             )
 
     except Exception as exc:
