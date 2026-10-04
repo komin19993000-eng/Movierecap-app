@@ -953,12 +953,17 @@ def translate_batch(
     rows,
     translation_style="original",
     detected_language="auto",
+    on_attempt=None,
 ):
     """Translate one batch of rows.
 
     Thread-safe: the API key index is passed explicitly and
     rotated in a local variable — never touches
     st.session_state, so worker threads can call this.
+
+    on_attempt(attempt_no, note) is called (from the worker
+    thread) before every API attempt so the UI can show live
+    activity instead of a frozen progress bar.
     """
 
     payload = [
@@ -1074,6 +1079,22 @@ INPUT:
         client = get_gemini_client(
             current_idx
         )
+
+        if on_attempt:
+
+            try:
+
+                on_attempt(
+                    attempts + 1,
+                    (
+                        f"key {current_idx + 1}"
+                        f"/{total_keys}"
+                    ),
+                )
+
+            except Exception:
+
+                pass
 
         try:
 
@@ -1772,18 +1793,84 @@ def build_srt_segments(
     done_lines = 0
     state_lock = threading.Lock()
 
+    # Live per-batch activity, e.g. {0: "attempt 2 (key 1/3)"}.
+    # Updated by worker threads; read by the main thread for
+    # heartbeat progress text.
+    batch_state = {}
+
     def _translate_one(batch_pos):
 
         batch_key_index = (
             batch_pos % len(keys)
         )
 
-        return translate_batch(
-            batch_key_index,
-            batches[batch_pos],
-            translation_style,
-            detected_language,
+        def _note(attempt_no, key_note):
+
+            with state_lock:
+
+                batch_state[batch_pos] = (
+                    f"ကြိုးစားမှု {attempt_no} "
+                    f"({key_note})"
+                )
+
+        with state_lock:
+
+            batch_state[batch_pos] = (
+                "စတင်နေသည်..."
+            )
+
+        try:
+
+            return translate_batch(
+                batch_key_index,
+                batches[batch_pos],
+                translation_style,
+                detected_language,
+                on_attempt=_note,
+            )
+
+        finally:
+
+            with state_lock:
+
+                batch_state.pop(
+                    batch_pos,
+                    None,
+                )
+
+    def _heartbeat_text():
+
+        with state_lock:
+
+            active = sorted(
+                batch_state.items()
+            )
+
+            finished_b = sum(
+                1
+                for b in translated_batches
+                if b is not None
+            )
+
+        elapsed = int(
+            time.time() - _t0[0]
         )
+
+        parts = [
+            f"ဘာသာပြန်နေသည်... "
+            f"{finished_b}/{num_batches} အသုတ် "
+            f"({elapsed}s)"
+        ]
+
+        for bpos, note in active[:3]:
+
+            parts.append(
+                f"• အသုတ် {bpos + 1}: {note}"
+            )
+
+        return "  ".join(parts)
+
+    _t0 = [time.time()]
 
     with ThreadPoolExecutor(
         max_workers=max_workers
@@ -1801,8 +1888,12 @@ def build_srt_segments(
 
         while pending:
 
+            # Wake every 5s even when no batch finished —
+            # heartbeat text keeps moving so the user sees
+            # real activity instead of a frozen bar.
             finished, _ = wait(
                 pending,
+                timeout=5,
                 return_when=FIRST_COMPLETED,
             )
 
@@ -1826,6 +1917,10 @@ def build_srt_segments(
 
                     lines_now = done_lines
 
+            with state_lock:
+
+                lines_now = done_lines
+
             progress_callback(
                 min(
                     0.95,
@@ -1836,7 +1931,9 @@ def build_srt_segments(
                         / total
                     ),
                 ),
-                (
+                _heartbeat_text()
+                if not finished
+                else (
                     "ဘာသာပြန်ပြီးပါပြီ — "
                     f"{lines_now}"
                     f"/{total}"
