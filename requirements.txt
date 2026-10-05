@@ -3,4 +3,4 @@ requests
 edge-tts
 imageio-ffmpeg
 google-genai
-streamlit-drawable-canvas
+streamlit-drawable-canvas==0.10.0

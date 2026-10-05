@@ -5178,7 +5178,10 @@ if app_mode == "edit":
 
                             init_objects.append(
                                 {
-                                    "type": "rect",
+                                    # "Rect" (capitalized) is the
+                                    # Fabric 7 spelling; 0.9.x loads
+                                    # it fine too.
+                                    "type": "Rect",
                                     "left": (
                                         mm["x"] / 100 * canvas_w
                                     ),
@@ -5280,7 +5283,11 @@ if app_mode == "edit":
                                 for o in canvas_result.json_data[
                                     "objects"
                                 ]
-                                if o.get("type") == "rect"
+                                # canvas 0.10+ (Fabric 7) reports
+                                # capitalized types ("Rect");
+                                # match both spellings.
+                                if o.get("type", "").lower()
+                                == "rect"
                             ]
 
                             old_list = st.session_state[
