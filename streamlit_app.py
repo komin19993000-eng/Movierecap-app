@@ -2731,6 +2731,25 @@ def build_voiceover(
     # speedup stays natural. Done with 4 workers: ~4x faster
     # than the old sequential one-line-at-a-time loop.
 
+    # Self-calibrating speech rate: measure the ACTUAL
+    # chars/sec from this run's Phase 1 TTS audio instead of
+    # trusting the REWRITE_TARGET_CPS guess. The my-MM voices
+    # (+ style rate shifts) speak at their own pace — a wrong
+    # guess here makes rewritten lines STILL too fast, which
+    # was the "voice too fast again" complaint.
+    _cps_samples = sorted(
+        len(info["text"]) / info["raw_duration"]
+        for info in line_infos
+        if info["raw_duration"] > 0.3
+        and len(info["text"]) > 0
+    )
+
+    measured_cps = (
+        _cps_samples[len(_cps_samples) // 2]
+        if _cps_samples
+        else REWRITE_TARGET_CPS
+    )
+
     def _rewrite_one(info):
 
         index = info["index"]
@@ -2743,23 +2762,34 @@ def build_voiceover(
             int(
                 slot
                 * MAX_INTELLIGIBLE_SPEEDUP
-                * REWRITE_TARGET_CPS
+                * measured_cps
             ),
         )
 
-        try:
+        shorter = None
 
-            shorter = (
-                rewrite_shorter_burmese(
-                    gemini_client,
-                    text,
-                    target_chars,
+        # Two attempts: free-tier Gemini often 503s on the
+        # first try, and a failed rewrite = a chipmunk-fast
+        # line. Worth one retry.
+        for _ in range(2):
+
+            try:
+
+                shorter = (
+                    rewrite_shorter_burmese(
+                        gemini_client,
+                        text,
+                        target_chars,
+                    )
                 )
-            )
 
-        except Exception:
+                if shorter:
 
-            return None
+                    break
+
+            except Exception:
+
+                time.sleep(2)
 
         if not shorter:
 
@@ -4382,6 +4412,13 @@ if app_mode == "srt":
             "webm",
         ],
         key="source_video",
+    )
+
+    st.caption(
+        "💡 Upload ကြာနေရင်: Play Store က video compress app "
+        "(ဥပမာ 'Video Compress') နဲ့ ဖုန်းထဲမှာ အရင်ချုံ့ပြီးမှ တင်ပါ — "
+        "TikTok/YouTube တို့လည်း ဖုန်းထဲမှာအရင်ချုံ့လို့ မြန်တာ။ "
+        "WiFi နဲ့တင်ရင် ပိုမြန်မယ်။"
     )
 
     with st.expander(
