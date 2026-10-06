@@ -1061,10 +1061,12 @@ INPUT:
 
     attempts = 0
 
-    # Initial request + up to 5 retries.
+    # Initial request + a few retries. Kept small on
+    # purpose: with the short jittered backoff above,
+    # more attempts just burn minutes on a dead key.
     max_attempts = max(
-        total_keys * 3,
-        6,
+        total_keys * 2,
+        4,
     )
 
     last_error = ""
@@ -1208,21 +1210,43 @@ INPUT:
 
                 attempts += 1
 
+                # Rotate to a fresh key immediately when we
+                # have spares — the overloaded key needs rest,
+                # not the same hammering after a long sleep.
+                if total_keys > 1:
+
+                    local_key_index = (
+                        (
+                            local_key_index
+                            + 1
+                        )
+                        % total_keys
+                    )
+
                 if attempts < max_attempts:
 
+                    # Short backoff with jitter. The old
+                    # 8/16/32/60/60 sleeps turned every
+                    # 503 storm into minutes of dead time
+                    # per batch — the main reason SRT
+                    # translation felt much slower.
+                    base = [
+                        2,
+                        4,
+                        8,
+                        15,
+                        25,
+                    ][
+                        min(
+                            attempts - 1,
+                            4,
+                        )
+                    ]
+
                     time.sleep(
-                        [
-                            8,
-                            16,
-                            32,
-                            60,
-                            60,
-                        ][
-                            min(
-                                attempts - 1,
-                                4,
-                            )
-                        ]
+                        base
+                        + random.random()
+                        * 2
                     )
 
                     continue
@@ -2192,8 +2216,14 @@ async def edge_tts_save(
         pitch=f"{int(pitch):+d}Hz",
     )
 
-    await communicate.save(
-        str(output_path)
+    # Hard timeout: a stalled edge-tts connection used to
+    # hang a worker thread indefinitely and stall the
+    # whole voiceover build with no progress shown.
+    await asyncio.wait_for(
+        communicate.save(
+            str(output_path)
+        ),
+        timeout=90,
     )
 
 
@@ -2576,6 +2606,14 @@ def build_voiceover(
                 ),
             )
 
+    # ---- Phase 2a: measure every line (sequential, local ffprobe only) ----
+    # Collect per-line info first so the slow network work
+    # (AI rewrites + TTS regen for overflowing lines) can run
+    # in parallel in Phase 2b instead of stalling the loop
+    # line-by-line.
+
+    line_infos = []
+
     for index, item in enumerate(
         segments,
         start=1,
@@ -2633,19 +2671,6 @@ def build_voiceover(
             / f"clip_{index:04d}.m4a"
         )
 
-        progress_callback(
-            0.50
-            + 0.30
-            * (
-                (index - 1)
-                / total
-            ),
-            (
-                f"Voice {index}/{total} "
-                "ချိန်ညှိနေသည်..."
-            ),
-        )
-
         text = clean_text(
             item["burmese"]
         )
@@ -2665,93 +2690,198 @@ def build_voiceover(
                 raw,
             )
 
-        # If the narration cannot fit the slot at an
-        # intelligible speed, try ONE proper AI rewrite
-        # (complete sentences, not truncation) before
-        # accepting a slight overflow into the next pause.
-
         raw_duration = ffprobe_duration(
             raw
         )
 
+        line_infos.append(
+            {
+                "index": index,
+                "item": item,
+                "start": start,
+                "slot": slot,
+                "raw": raw,
+                "fitted": fitted,
+                "text": text,
+                "raw_duration": raw_duration,
+            }
+        )
+
+    # ---- Phase 2b: rewrite + regenerate overflowing lines (parallel) ----
+    # If a narration cannot fit its slot at an intelligible
+    # speed, try ONE proper AI rewrite (complete sentences,
+    # not truncation) before accepting a slight overflow
+    # into the next pause. Done with 4 workers: ~4x faster
+    # than the old sequential one-line-at-a-time loop.
+
+    def _rewrite_one(info):
+
+        index = info["index"]
+        slot = info["slot"]
+        text = info["text"]
+        raw = info["raw"]
+
+        target_chars = max(
+            8,
+            int(
+                slot
+                * MAX_INTELLIGIBLE_SPEEDUP
+                * REWRITE_TARGET_CPS
+            ),
+        )
+
+        try:
+
+            shorter = (
+                rewrite_shorter_burmese(
+                    gemini_client,
+                    text,
+                    target_chars,
+                )
+            )
+
+        except Exception:
+
+            return None
+
+        if not shorter:
+
+            return None
+
+        retry_raw = (
+            work_dir
+            / f"tts_{index:04d}_r.mp3"
+        )
+
+        try:
+
+            make_tts(
+                shorter,
+                voice,
+                style,
+                retry_raw,
+            )
+
+            retry_raw.replace(
+                raw
+            )
+
+            return (
+                index,
+                shorter,
+                ffprobe_duration(raw),
+            )
+
+        except Exception:
+
+            if retry_raw.exists():
+
+                retry_raw.unlink()
+
+            return None
+
+    overflow_infos = [
+        info
+        for info in line_infos
         if (
             gemini_client is not None
-            and raw_duration
-            / max(slot, 0.20)
+            and info["raw_duration"]
+            / max(info["slot"], 0.20)
             > MAX_INTELLIGIBLE_SPEEDUP
-        ):
+        )
+    ]
 
-            progress_callback(
-                0.50
-                + 0.30
-                * (index / total),
-                (
-                    f"Line {index}/{total} "
-                    "too long — rewriting shorter..."
-                ),
-            )
+    if overflow_infos:
 
-            target_chars = max(
-                8,
-                int(
-                    slot
-                    * MAX_INTELLIGIBLE_SPEEDUP
-                    * REWRITE_TARGET_CPS
-                ),
-            )
+        progress_callback(
+            0.55,
+            (
+                f"စာကြောင်း {len(overflow_infos)} ကြောင်း "
+                "ပြန်တိုနေသည်... (parallel)"
+            ),
+        )
 
-            try:
+        with ThreadPoolExecutor(
+            max_workers=4
+        ) as rewrite_pool:
 
-                shorter = (
-                    rewrite_shorter_burmese(
-                        gemini_client,
-                        text,
-                        target_chars,
-                    )
+            rewrite_pending = {
+                rewrite_pool.submit(
+                    _rewrite_one,
+                    info,
+                ): info["index"]
+                for info in overflow_infos
+            }
+
+            while rewrite_pending:
+
+                finished, _ = wait(
+                    rewrite_pending,
+                    return_when=FIRST_COMPLETED,
                 )
 
-            except Exception:
+                for future in finished:
 
-                shorter = None
-
-            if shorter:
-
-                retry_raw = (
-                    work_dir
-                    / f"tts_{index:04d}_r.mp3"
-                )
-
-                try:
-
-                    make_tts(
-                        shorter,
-                        voice,
-                        style,
-                        retry_raw,
+                    idx = rewrite_pending.pop(
+                        future
                     )
 
-                    retry_raw.replace(
-                        raw
-                    )
+                    try:
 
-                    text = shorter
+                        result = future.result()
 
-                    item["burmese"] = (
-                        shorter
-                    )
+                    except Exception:
 
-                    rewritten_count += 1
+                        result = None
 
-                    raw_duration = (
-                        ffprobe_duration(
-                            raw
+                    if result:
+
+                        _, shorter, new_duration = (
+                            result
                         )
-                    )
 
-                except Exception:
+                        for info in line_infos:
 
-                    if retry_raw.exists():
-                        retry_raw.unlink()
+                            if info["index"] == idx:
+
+                                info["text"] = (
+                                    shorter
+                                )
+
+                                info[
+                                    "raw_duration"
+                                ] = new_duration
+
+                                info["item"][
+                                    "burmese"
+                                ] = shorter
+
+                                break
+
+                        rewritten_count += 1
+
+    # ---- Phase 2c: fit every clip to its slot (sequential, local) ----
+
+    for pos, info in enumerate(
+        line_infos
+    ):
+
+        index = info["index"]
+        start = info["start"]
+        slot = info["slot"]
+        raw = info["raw"]
+        fitted = info["fitted"]
+        raw_duration = info["raw_duration"]
+
+        progress_callback(
+            0.60
+            + 0.20
+            * (pos / max(total, 1)),
+            (
+                f"Voice {index}/{total} "
+                "ချိန်ညှိနေသည်..."
+            ),
+        )
 
         fit_tts_to_slot(
             raw,
@@ -5093,10 +5223,10 @@ if app_mode == "edit":
 
                     st.markdown(
                         '<div class="canvas-hint">'
-                        "▭ <b>+ Add mask</b> နှိပ်ရင် video ပေါ်မှာ "
-                        "လေးထောင့်ကွက် ပေါ်လာမယ် — "
-                        "အဲဒါကို <b>drag / resize</b> လုပ်ပြီး "
-                        "စိတ်ကြိုက်ချိန်နိုင်တယ်။"
+                        "▭ <b>+ Add mask</b> နှိပ်ရင် mask အသစ် "
+                        "ပေါ်လာမယ် — ပြီးရင် mask ကို <b>ထိပြီး "
+                        "ဆွဲရွှေ့ / အနားကနေ ဆွဲချုံ့</b> ချဲ့နိုင်တယ်။ "
+                        "သေချာချိန်ပြီးမှ အောက်က preview ကြည့်။"
                         "</div>",
                         unsafe_allow_html=True,
                     )
@@ -5244,6 +5374,43 @@ if app_mode == "edit":
 
                             st.rerun()
 
+                        # Only push the mask list INTO the canvas
+                        # when it changed OUTSIDE the canvas
+                        # (+ Add mask / Clear all / Remove).
+                        # A rebuild on every rerun overwrote
+                        # the user's in-progress drag — that
+                        # fight was why drag/resize felt
+                        # broken and "not smooth".
+                        cur_sig = json.dumps(
+                            st.session_state[
+                                "edit_mask_list"
+                            ],
+                            sort_keys=True,
+                        )
+
+                        if (
+                            st.session_state.get(
+                                "mask_canvas_sig"
+                            )
+                            != cur_sig
+                        ):
+
+                            push_drawing = (
+                                {
+                                    "version": "4.4.0",
+                                    "objects": init_objects,
+                                }
+                                if init_objects
+                                else {
+                                    "version": "4.4.0",
+                                    "objects": [],
+                                }
+                            )
+
+                        else:
+
+                            push_drawing = None
+
                         canvas_result = st_canvas(
                             fill_color=(
                                 "rgba(99,102,241,0.25)"
@@ -5254,20 +5421,19 @@ if app_mode == "edit":
                             update_streamlit=True,
                             height=canvas_h,
                             width=canvas_w,
-                            drawing_mode="rect",
-                            display_toolbar=True,
+                            # "transform" lets the user select,
+                            # drag and resize the existing
+                            # rects. ("rect" mode hijacks every
+                            # touch to draw a NEW rect, so
+                            # drag/resize never worked.)
+                            # New masks come from + Add mask.
+                            drawing_mode="transform",
+                            display_toolbar=False,
                             key=(
                                 "mask_canvas_"
                                 f"{st.session_state['mask_canvas_epoch']}"
                             ),
-                            initial_drawing=(
-                                {
-                                    "version": "4.4.0",
-                                    "objects": init_objects,
-                                }
-                                if init_objects
-                                else None
-                            ),
+                            initial_drawing=push_drawing,
                         )
 
                         # sync canvas rects -> mask list
@@ -5294,66 +5460,127 @@ if app_mode == "edit":
                                 "edit_mask_list"
                             ]
 
-                            new_list = []
-
-                            for i, r in enumerate(
-                                rects
+                            # Guard: in transform mode the user
+                            # cannot add/remove rects, so a
+                            # count mismatch means the canvas
+                            # is mid-rebuild — syncing now
+                            # would WIPE the masks. Skip.
+                            if len(rects) == len(
+                                old_list
                             ):
 
-                                style = (
-                                    old_list[i]["style"]
-                                    if i < len(old_list)
-                                    and old_list[i].get(
-                                        "style"
+                                new_list = []
+
+                                for i, r in enumerate(
+                                    rects
+                                ):
+
+                                    style = (
+                                        old_list[i]["style"]
+                                        if i < len(old_list)
+                                        and old_list[i].get(
+                                            "style"
+                                        )
+                                        else "Blur"
                                     )
-                                    else "Blur"
-                                )
 
-                                new_list.append(
-                                    {
-                                        "x": max(
-                                            0.0,
-                                            min(
-                                                100.0,
-                                                r["left"]
-                                                / canvas_w
-                                                * 100,
-                                            ),
-                                        ),
-                                        "y": max(
-                                            0.0,
-                                            min(
-                                                100.0,
-                                                r["top"]
-                                                / canvas_h
-                                                * 100,
-                                            ),
-                                        ),
-                                        "w": max(
-                                            1.0,
-                                            min(
-                                                100.0,
-                                                r["width"]
-                                                / canvas_w
-                                                * 100,
-                                            ),
-                                        ),
-                                        "h": max(
-                                            1.0,
-                                            min(
-                                                100.0,
-                                                r["height"]
-                                                / canvas_h
-                                                * 100,
-                                            ),
-                                        ),
-                                        "style": style,
-                                    }
-                                )
+                                    # Fabric resize keeps
+                                    # width/height at the
+                                    # ORIGINAL values and
+                                    # stores the resize in
+                                    # scaleX/scaleY — ignoring
+                                    # them made every resize
+                                    # snap back to the old
+                                    # size on the next rerun.
+                                    rw = (
+                                        float(
+                                            r.get(
+                                                "width",
+                                                0,
+                                            )
+                                        )
+                                        * float(
+                                            r.get(
+                                                "scaleX",
+                                                1,
+                                            )
+                                            or 1
+                                        )
+                                    )
 
+                                    rh = (
+                                        float(
+                                            r.get(
+                                                "height",
+                                                0,
+                                            )
+                                        )
+                                        * float(
+                                            r.get(
+                                                "scaleY",
+                                                1,
+                                            )
+                                            or 1
+                                        )
+                                    )
+
+                                    new_list.append(
+                                        {
+                                            "x": max(
+                                                0.0,
+                                                min(
+                                                    100.0,
+                                                    r["left"]
+                                                    / canvas_w
+                                                    * 100,
+                                                ),
+                                            ),
+                                            "y": max(
+                                                0.0,
+                                                min(
+                                                    100.0,
+                                                    r["top"]
+                                                    / canvas_h
+                                                    * 100,
+                                                ),
+                                            ),
+                                            "w": max(
+                                                1.0,
+                                                min(
+                                                    100.0,
+                                                    rw
+                                                    / canvas_w
+                                                    * 100,
+                                                ),
+                                            ),
+                                            "h": max(
+                                                1.0,
+                                                min(
+                                                    100.0,
+                                                    rh
+                                                    / canvas_h
+                                                    * 100,
+                                                ),
+                                            ),
+                                            "style": style,
+                                        }
+                                    )
+
+                                st.session_state[
+                                    "edit_mask_list"
+                                ] = new_list
+
+                        # The canvas now shows exactly what
+                        # edit_mask_list holds — record it so
+                        # the next rerun does NOT rebuild.
+                        st.session_state[
+                            "mask_canvas_sig"
+                        ] = json.dumps(
                             st.session_state[
                                 "edit_mask_list"
-                            ] = new_list
+                            ],
+                            sort_keys=True,
+                        )
 
                         # per-mask style + remove
                         for pos, m in enumerate(
