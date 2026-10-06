@@ -2401,7 +2401,25 @@ def fit_tts_to_slot(
     output: Path,
     slot: float,
     user_speed: float,
+    hard_limit: float | None = None,
 ):
+
+    raw_duration = ffprobe_duration(
+        source
+    )
+
+    slot = max(
+        0.20,
+        float(slot),
+    )
+
+    user_speed = max(
+        MIN_TTS_SPEED,
+        min(
+            float(user_speed),
+            MAX_TTS_SPEED,
+        ),
+    )
 
     raw_duration = ffprobe_duration(
         source
@@ -2451,6 +2469,21 @@ def fit_tts_to_slot(
         atempo_chain(factor)
         + ",asetpts=PTS-STARTPTS"
     )
+
+    # Hard backstop against overlapping the next line: even
+    # at the intelligibility cap, an overlong narration must
+    # NEVER bleed into the following speech. atrim past the
+    # clip end is a harmless no-op, so this is safe to apply
+    # unconditionally when a limit is given.
+    if (
+        hard_limit is not None
+        and hard_limit > 0.20
+    ):
+
+        audio_filter += (
+            f",atrim=0:{hard_limit:.3f},"
+            "asetpts=PTS-STARTPTS"
+        )
 
     result = run_cmd(
         [
@@ -2661,6 +2694,21 @@ def build_voiceover(
             float(slot),
         )
 
+        # Absolute end boundary for this clip: the next
+        # line's start minus a small gap. The fitted clip
+        # is hard-trimmed here so voices can never overlap,
+        # no matter how overlong the narration is.
+        if index < total:
+
+            hard_limit = max(
+                0.20,
+                next_start - start - 0.05,
+            )
+
+        else:
+
+            hard_limit = None
+
         raw = (
             work_dir
             / f"tts_{index:04d}.mp3"
@@ -2700,6 +2748,7 @@ def build_voiceover(
                 "item": item,
                 "start": start,
                 "slot": slot,
+                "hard_limit": hard_limit,
                 "raw": raw,
                 "fitted": fitted,
                 "text": text,
@@ -2869,6 +2918,7 @@ def build_voiceover(
         index = info["index"]
         start = info["start"]
         slot = info["slot"]
+        hard_limit = info["hard_limit"]
         raw = info["raw"]
         fitted = info["fitted"]
         raw_duration = info["raw_duration"]
@@ -2888,6 +2938,7 @@ def build_voiceover(
             fitted,
             slot,
             speed,
+            hard_limit=hard_limit,
         )
 
         overflow = (
@@ -5199,500 +5250,15 @@ if app_mode == "edit":
                         / 100.0
                     )
 
-            with st.expander(
-                "🎭 Mask hardcoded subtitles",
-                expanded=False,
-            ):
-
-                mask_enabled = st.checkbox(
-                    "Cover burned-in subtitles with a mask",
-                    value=False,
-                    key="mask_enabled_cb",
-                )
-
-                edit_masks = []
-                edit_mask_blur = 25
-
-                if "edit_mask_list" not in st.session_state:
-                    st.session_state["edit_mask_list"] = []
-
-                if "mask_canvas_epoch" not in st.session_state:
-                    st.session_state["mask_canvas_epoch"] = 0
-
-                if mask_enabled:
-
-                    st.markdown(
-                        '<div class="canvas-hint">'
-                        "▭ <b>+ Add mask</b> နှိပ်ရင် mask အသစ် "
-                        "ပေါ်လာမယ် — ပြီးရင် mask ကို <b>ထိပြီး "
-                        "ဆွဲရွှေ့ / အနားကနေ ဆွဲချုံ့</b> ချဲ့နိုင်တယ်။ "
-                        "သေချာချိန်ပြီးမှ အောက်က preview ကြည့်။"
-                        "</div>",
-                        unsafe_allow_html=True,
-                    )
-
-                    # ---- canvas background: one frame, 1:1 mapped ----
-                    canvas_h = 360
-                    src_w = media_info["width"]
-                    src_h = media_info["height"]
-                    canvas_w = max(
-                        160,
-                        int(canvas_h * src_w / max(src_h, 1)),
-                    )
-
-                    try:
-                        vid_size = Path(edit_video_path).stat().st_size
-                    except OSError:
-                        vid_size = 0
-
-                    vid_sig = f"{edit_video_path}::{vid_size}"
-                    canvas_bg_path = (
-                        EDIT_WORK_DIR / "mask_canvas_bg.jpg"
-                    )
-
-                    if (
-                        st.session_state.get("mask_bg_sig")
-                        != vid_sig
-                    ):
-                        canvas_bg_path.unlink(missing_ok=True)
-                        st.session_state["mask_bg_sig"] = vid_sig
-
-                    if not canvas_bg_path.exists():
-
-                        run_cmd(
-                            [
-                                FFMPEG, "-y", "-hide_banner",
-                                "-loglevel", "error",
-                                "-ss",
-                                f"{min(30.0, media_info['duration'] * 0.3):.1f}",
-                                "-i", str(edit_video_path),
-                                "-vframes", "1",
-                                "-vf",
-                                f"scale={canvas_w}:{canvas_h}",
-                                str(canvas_bg_path),
-                            ],
-                            timeout=120,
-                        )
-
-                    try:
-
-                        from streamlit_drawable_canvas import (
-                            st_canvas,
-                        )
-
-                        from PIL import Image
-
-                        canvas_available = True
-
-                    except Exception:
-
-                        canvas_available = False
-
-                    if canvas_available and canvas_bg_path.exists():
-
-                        bg_img = Image.open(
-                            canvas_bg_path
-                        ).convert("RGB")
-
-                        if bg_img.size != (canvas_w, canvas_h):
-
-                            bg_img = bg_img.resize(
-                                (canvas_w, canvas_h)
-                            )
-
-                        init_objects = []
-
-                        for mm in st.session_state[
-                            "edit_mask_list"
-                        ]:
-
-                            init_objects.append(
-                                {
-                                    # "Rect" (capitalized) is the
-                                    # Fabric 7 spelling; 0.9.x loads
-                                    # it fine too.
-                                    "type": "Rect",
-                                    "left": (
-                                        mm["x"] / 100 * canvas_w
-                                    ),
-                                    "top": (
-                                        mm["y"] / 100 * canvas_h
-                                    ),
-                                    "width": (
-                                        mm["w"] / 100 * canvas_w
-                                    ),
-                                    "height": (
-                                        mm["h"] / 100 * canvas_h
-                                    ),
-                                    "fill": (
-                                        "rgba(99,102,241,0.25)"
-                                    ),
-                                    "stroke": "#818cf8",
-                                    "strokeWidth": 2,
-                                }
-                            )
-
-                        c_add, c_clear = st.columns(2)
-
-                        if c_add.button(
-                            "+ Add mask",
-                            key="add_mask_btn",
-                            use_container_width=True,
-                        ):
-
-                            st.session_state[
-                                "edit_mask_list"
-                            ].append(
-                                {
-                                    "x": 10.0,
-                                    "y": 76.0,
-                                    "w": 80.0,
-                                    "h": 16.0,
-                                    "style": "Blur",
-                                }
-                            )
-
-                            st.session_state[
-                                "mask_canvas_epoch"
-                            ] += 1
-
-                            st.rerun()
-
-                        if c_clear.button(
-                            "Clear all",
-                            key="clear_mask_btn",
-                            use_container_width=True,
-                        ):
-
-                            st.session_state[
-                                "edit_mask_list"
-                            ] = []
-
-                            st.session_state[
-                                "mask_canvas_epoch"
-                            ] += 1
-
-                            st.rerun()
-
-                        # Only push the mask list INTO the canvas
-                        # when it changed OUTSIDE the canvas
-                        # (+ Add mask / Clear all / Remove).
-                        # A rebuild on every rerun overwrote
-                        # the user's in-progress drag — that
-                        # fight was why drag/resize felt
-                        # broken and "not smooth".
-                        cur_sig = json.dumps(
-                            st.session_state[
-                                "edit_mask_list"
-                            ],
-                            sort_keys=True,
-                        )
-
-                        if (
-                            st.session_state.get(
-                                "mask_canvas_sig"
-                            )
-                            != cur_sig
-                        ):
-
-                            push_drawing = (
-                                {
-                                    "version": "4.4.0",
-                                    "objects": init_objects,
-                                }
-                                if init_objects
-                                else {
-                                    "version": "4.4.0",
-                                    "objects": [],
-                                }
-                            )
-
-                        else:
-
-                            push_drawing = None
-
-                        canvas_result = st_canvas(
-                            fill_color=(
-                                "rgba(99,102,241,0.25)"
-                            ),
-                            stroke_width=2,
-                            stroke_color="#818cf8",
-                            background_image=bg_img,
-                            update_streamlit=True,
-                            height=canvas_h,
-                            width=canvas_w,
-                            # "transform" lets the user select,
-                            # drag and resize the existing
-                            # rects. ("rect" mode hijacks every
-                            # touch to draw a NEW rect, so
-                            # drag/resize never worked.)
-                            # New masks come from + Add mask.
-                            drawing_mode="transform",
-                            display_toolbar=False,
-                            key=(
-                                "mask_canvas_"
-                                f"{st.session_state['mask_canvas_epoch']}"
-                            ),
-                            initial_drawing=push_drawing,
-                        )
-
-                        # sync canvas rects -> mask list
-                        # (styles kept by position)
-                        if (
-                            canvas_result is not None
-                            and canvas_result.json_data
-                            is not None
-                        ):
-
-                            rects = [
-                                o
-                                for o in canvas_result.json_data[
-                                    "objects"
-                                ]
-                                # canvas 0.10+ (Fabric 7) reports
-                                # capitalized types ("Rect");
-                                # match both spellings.
-                                if o.get("type", "").lower()
-                                == "rect"
-                            ]
-
-                            old_list = st.session_state[
-                                "edit_mask_list"
-                            ]
-
-                            # Guard: in transform mode the user
-                            # cannot add/remove rects, so a
-                            # count mismatch means the canvas
-                            # is mid-rebuild — syncing now
-                            # would WIPE the masks. Skip.
-                            if len(rects) == len(
-                                old_list
-                            ):
-
-                                new_list = []
-
-                                for i, r in enumerate(
-                                    rects
-                                ):
-
-                                    style = (
-                                        old_list[i]["style"]
-                                        if i < len(old_list)
-                                        and old_list[i].get(
-                                            "style"
-                                        )
-                                        else "Blur"
-                                    )
-
-                                    # Fabric resize keeps
-                                    # width/height at the
-                                    # ORIGINAL values and
-                                    # stores the resize in
-                                    # scaleX/scaleY — ignoring
-                                    # them made every resize
-                                    # snap back to the old
-                                    # size on the next rerun.
-                                    rw = (
-                                        float(
-                                            r.get(
-                                                "width",
-                                                0,
-                                            )
-                                        )
-                                        * float(
-                                            r.get(
-                                                "scaleX",
-                                                1,
-                                            )
-                                            or 1
-                                        )
-                                    )
-
-                                    rh = (
-                                        float(
-                                            r.get(
-                                                "height",
-                                                0,
-                                            )
-                                        )
-                                        * float(
-                                            r.get(
-                                                "scaleY",
-                                                1,
-                                            )
-                                            or 1
-                                        )
-                                    )
-
-                                    new_list.append(
-                                        {
-                                            "x": max(
-                                                0.0,
-                                                min(
-                                                    100.0,
-                                                    r["left"]
-                                                    / canvas_w
-                                                    * 100,
-                                                ),
-                                            ),
-                                            "y": max(
-                                                0.0,
-                                                min(
-                                                    100.0,
-                                                    r["top"]
-                                                    / canvas_h
-                                                    * 100,
-                                                ),
-                                            ),
-                                            "w": max(
-                                                1.0,
-                                                min(
-                                                    100.0,
-                                                    rw
-                                                    / canvas_w
-                                                    * 100,
-                                                ),
-                                            ),
-                                            "h": max(
-                                                1.0,
-                                                min(
-                                                    100.0,
-                                                    rh
-                                                    / canvas_h
-                                                    * 100,
-                                                ),
-                                            ),
-                                            "style": style,
-                                        }
-                                    )
-
-                                st.session_state[
-                                    "edit_mask_list"
-                                ] = new_list
-
-                        # The canvas now shows exactly what
-                        # edit_mask_list holds — record it so
-                        # the next rerun does NOT rebuild.
-                        st.session_state[
-                            "mask_canvas_sig"
-                        ] = json.dumps(
-                            st.session_state[
-                                "edit_mask_list"
-                            ],
-                            sort_keys=True,
-                        )
-
-                        # per-mask style + remove
-                        for pos, m in enumerate(
-                            st.session_state[
-                                "edit_mask_list"
-                            ]
-                        ):
-
-                            mc1, mc2 = st.columns(
-                                [1.2, 1]
-                            )
-
-                            m["style"] = mc1.radio(
-                                f"Mask {pos + 1} style",
-                                [
-                                    "Blur",
-                                    "Black box",
-                                ],
-                                index=(
-                                    0
-                                    if m["style"]
-                                    == "Blur"
-                                    else 1
-                                ),
-                                horizontal=True,
-                                key=(
-                                    "mk_style_"
-                                    f"{pos}_"
-                                    f"{st.session_state['mask_canvas_epoch']}"
-                                ),
-                            )
-
-                            if mc2.button(
-                                f"Remove mask {pos + 1}",
-                                key=(
-                                    "mk_rm_"
-                                    f"{pos}_"
-                                    f"{st.session_state['mask_canvas_epoch']}"
-                                ),
-                            ):
-
-                                st.session_state[
-                                    "edit_mask_list"
-                                ] = [
-                                    mm
-                                    for j, mm in enumerate(
-                                        st.session_state[
-                                            "edit_mask_list"
-                                        ]
-                                    )
-                                    if j != pos
-                                ]
-
-                                st.session_state[
-                                    "mask_canvas_epoch"
-                                ] += 1
-
-                                st.rerun()
-
-                        if any(
-                            mm["style"] == "Blur"
-                            for mm in st.session_state[
-                                "edit_mask_list"
-                            ]
-                        ):
-
-                            edit_mask_blur = (
-                                st.slider(
-                                    "Mask blur strength",
-                                    1,
-                                    10,
-                                    5,
-                                    key="mask_blur_slider",
-                                )
-                                * 5
-                            )
-
-                    else:
-
-                        st.warning(
-                            "Canvas editor မရပါ — "
-                            "streamlit-drawable-canvas "
-                            "လိုအပ်ပါတယ်။"
-                        )
-
-                    # pixel masks for the ffmpeg filter
-                    for mm in st.session_state[
-                        "edit_mask_list"
-                    ]:
-
-                        edit_masks.append(
-                            {
-                                "x": int(
-                                    src_w * mm["x"] / 100
-                                ),
-                                "y": int(
-                                    src_h * mm["y"] / 100
-                                ),
-                                "w": int(
-                                    src_w * mm["w"] / 100
-                                ),
-                                "h": int(
-                                    src_h * mm["h"] / 100
-                                ),
-                                "mode": (
-                                    "blur"
-                                    if mm["style"]
-                                    == "Blur"
-                                    else "black"
-                                ),
-                            }
-                        )
+            # ------------------------------------------------
+            # Mask editor REMOVED (2026-10-06, jo's order):
+            # the drag-canvas mask editor never worked reliably
+            # on his phone (rect vanished on drag-release), and
+            # the endless fix cycles blocked his real work.
+            # Masks stay empty - the render pipeline skips them.
+            # ------------------------------------------------
+            edit_masks = []
+            edit_mask_blur = 25
 
 
             with st.expander(
