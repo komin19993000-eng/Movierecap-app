@@ -2401,7 +2401,6 @@ def fit_tts_to_slot(
     output: Path,
     slot: float,
     user_speed: float,
-    hard_limit: float | None = None,
 ):
 
     raw_duration = ffprobe_duration(
@@ -2449,41 +2448,26 @@ def fit_tts_to_slot(
     else:
 
         # ====================================================
-        # INTELLIGIBILITY CAP.
-        # Never speed speech beyond MAX_INTELLIGIBLE_SPEEDUP.
-        # If the narration is longer than the slot even at that
-        # speed, the caller may first try an AI rewrite; the
-        # remainder is allowed to overflow slightly into the
-        # following pause instead of becoming chipmunk audio.
+        # EXACT FIT (jo's original behavior).
+        # The clip is sped up by EXACTLY raw/slot so it fills
+        # its timestamp precisely: no overlap with the next
+        # line, no cutoff mid-sentence, timing exactly right.
+        # "Too fast" voices are fixed UPSTREAM by the AI
+        # rewrite (Phase 2b), which shortens overlong lines
+        # before TTS — never by capping speed here. Capping
+        # here is what caused overlap, and the atrim backstop
+        # is what cut sentences off.
         # ====================================================
 
-        factor = min(
-            max(
-                required_factor,
-                user_speed,
-            ),
-            MAX_INTELLIGIBLE_SPEEDUP,
+        factor = max(
+            required_factor,
+            user_speed,
         )
 
     audio_filter = (
         atempo_chain(factor)
         + ",asetpts=PTS-STARTPTS"
     )
-
-    # Hard backstop against overlapping the next line: even
-    # at the intelligibility cap, an overlong narration must
-    # NEVER bleed into the following speech. atrim past the
-    # clip end is a harmless no-op, so this is safe to apply
-    # unconditionally when a limit is given.
-    if (
-        hard_limit is not None
-        and hard_limit > 0.20
-    ):
-
-        audio_filter += (
-            f",atrim=0:{hard_limit:.3f},"
-            "asetpts=PTS-STARTPTS"
-        )
 
     result = run_cmd(
         [
@@ -2542,9 +2526,9 @@ def build_voiceover(
     total = len(segments)
 
     # Lines that were rewritten shorter by AI, and lines that
-    # still overflow their slot even at the intelligibility cap.
+    # still needed a fast speedup even after rewriting.
     rewritten_count = 0
-    overflow_lines = []
+    fast_lines = []
 
     # ---- Phase 1: generate all raw TTS clips in parallel ----
     # edge-tts calls are independent; 4 workers ≈ 3-4x faster
@@ -2694,21 +2678,6 @@ def build_voiceover(
             float(slot),
         )
 
-        # Absolute end boundary for this clip: the next
-        # line's start minus a small gap. The fitted clip
-        # is hard-trimmed here so voices can never overlap,
-        # no matter how overlong the narration is.
-        if index < total:
-
-            hard_limit = max(
-                0.20,
-                next_start - start - 0.05,
-            )
-
-        else:
-
-            hard_limit = None
-
         raw = (
             work_dir
             / f"tts_{index:04d}.mp3"
@@ -2748,7 +2717,6 @@ def build_voiceover(
                 "item": item,
                 "start": start,
                 "slot": slot,
-                "hard_limit": hard_limit,
                 "raw": raw,
                 "fitted": fitted,
                 "text": text,
@@ -2756,11 +2724,11 @@ def build_voiceover(
             }
         )
 
-    # ---- Phase 2b: rewrite + regenerate overflowing lines (parallel) ----
-    # If a narration cannot fit its slot at an intelligible
-    # speed, try ONE proper AI rewrite (complete sentences,
-    # not truncation) before accepting a slight overflow
-    # into the next pause. Done with 4 workers: ~4x faster
+    # ---- Phase 2b: rewrite + regenerate overlong lines (parallel) ----
+    # If a narration needs more than MAX_INTELLIGIBLE_SPEEDUP
+    # to fit its slot, try ONE proper AI rewrite (complete
+    # sentences, not truncation) so the final exact-fit
+    # speedup stays natural. Done with 4 workers: ~4x faster
     # than the old sequential one-line-at-a-time loop.
 
     def _rewrite_one(info):
@@ -2918,7 +2886,6 @@ def build_voiceover(
         index = info["index"]
         start = info["start"]
         slot = info["slot"]
-        hard_limit = info["hard_limit"]
         raw = info["raw"]
         fitted = info["fitted"]
         raw_duration = info["raw_duration"]
@@ -2938,22 +2905,28 @@ def build_voiceover(
             fitted,
             slot,
             speed,
-            hard_limit=hard_limit,
         )
 
-        overflow = (
+        # With exact-fit timing there is no overlap and no
+        # cutoff. Report lines that still needed a fast
+        # speedup even after the AI rewrite, so jo knows
+        # which ones to check by ear.
+        final_factor = (
             raw_duration
-            / MAX_INTELLIGIBLE_SPEEDUP
-            - slot
+            / max(slot, 0.20)
         )
 
-        if overflow > 0.05:
+        if (
+            final_factor
+            > MAX_INTELLIGIBLE_SPEEDUP
+            + 0.05
+        ):
 
-            overflow_lines.append(
+            fast_lines.append(
                 (
                     index,
                     round(
-                        overflow,
+                        final_factor,
                         2,
                     ),
                 )
@@ -3124,7 +3097,7 @@ def build_voiceover(
         segments,
         {
             "rewritten": rewritten_count,
-            "overflow": overflow_lines,
+            "fast": fast_lines,
         },
     )
 
@@ -4893,26 +4866,31 @@ if app_mode == "voice":
                         "The SRT above was updated to match."
                     )
 
-                if timing_report["overflow"]:
+                if timing_report["fast"]:
 
-                    total_over = round(
-                        sum(
-                            sec
-                            for _, sec
-                            in timing_report[
-                                "overflow"
-                            ]
-                        ),
-                        1,
+                    fast_list = ", ".join(
+                        str(i)
+                        for i, _ in timing_report[
+                            "fast"
+                        ][:12]
+                    )
+
+                    fastest = max(
+                        f
+                        for _, f in timing_report[
+                            "fast"
+                        ]
                     )
 
                     st.warning(
-                        f"{len(timing_report['overflow'])} "
-                        "lines still run past their slots "
-                        f"({total_over}s total). They were kept "
-                        "at max 1.35x speed for intelligibility "
-                        "and extend slightly into the following "
-                        "pause instead of chipmunk audio."
+                        f"{len(timing_report['fast'])} "
+                        "lines still needed a fast speedup "
+                        f"(up to {fastest}x) even after AI "
+                        "rewriting — lines: "
+                        f"{fast_list}. Timing is exact "
+                        "(nothing overlaps, nothing is cut), "
+                        "but check these by ear; shortening "
+                        "their Burmese text will slow the voice."
                     )
 
                 voice_bytes = (
